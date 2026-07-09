@@ -1091,8 +1091,8 @@
       if (e.code === "Space") { e.preventDefault(); if (!GN.running) gnStart(); else if (GN.paused) gnResume(); else gnRespond(); }
       else if (e.key.toLowerCase() === "r") gnReset();
     } else if (currentGame === "flanker") {
-      if (e.key.toLowerCase() === "f") flRespond(-1);
-      else if (e.key.toLowerCase() === "j") flRespond(1);
+      if (e.key.toLowerCase() === "f" || e.key === "ArrowLeft") { e.preventDefault(); flRespond(-1); }
+      else if (e.key.toLowerCase() === "j" || e.key === "ArrowRight") { e.preventDefault(); flRespond(1); }
       else if (e.code === "Space") { e.preventDefault(); if (!FL.running) flStart(); else if (FL.paused) flResume(); else flEnd(); }
       else if (e.key.toLowerCase() === "r") flReset();
     }
