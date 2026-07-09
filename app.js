@@ -250,33 +250,21 @@
     const groups = $("glGroups");
     const q = ($("glSearch").value || "").trim().toLowerCase();
     groups.innerHTML = "";
-    const domains = [];
-    GAMES.forEach((gm) => { if (!domains.includes(gm.domain)) domains.push(gm.domain); });
-    domains.forEach((dom) => {
-      const items = GAMES.filter((gm) => gm.domain === dom && (!q || (gm.name + " " + gm.desc + " " + gm.domainLabel).toLowerCase().includes(q)));
-      if (!items.length) return;
-      const gWrap = document.createElement("div");
-      gWrap.className = "gl-group";
-      const title = document.createElement("div");
-      title.className = "gl-group-title";
-      title.textContent = dom;
-      gWrap.appendChild(title);
-      const cards = document.createElement("div");
-      cards.className = "gl-cards";
-      items.forEach((gm) => {
-        const card = document.createElement("button");
-        card.className = "gl-card" + (gm.id === currentGame ? " active" : "");
-        card.dataset.game = gm.id;
-        card.innerHTML = `<span class="gl-icon">${gm.icon}</span>`
-          + `<span class="gl-name">${gm.name}</span>`
-          + `<span class="gl-domain">${gm.domainLabel}</span>`
-          + `<span class="gl-desc">${gm.desc}</span>`;
-        cards.appendChild(card);
-      });
-      gWrap.appendChild(cards);
-      groups.appendChild(gWrap);
+    const items = GAMES.filter((gm) => !q || (gm.name + " " + gm.desc + " " + gm.domainLabel + " " + gm.domain).toLowerCase().includes(q));
+    if (!items.length) { groups.innerHTML = `<p class="gl-empty">未找到匹配的训练游戏。</p>`; return; }
+    const cards = document.createElement("div");
+    cards.className = "gl-cards";
+    items.forEach((gm) => {
+      const card = document.createElement("button");
+      card.className = "gl-card" + (gm.id === currentGame ? " active" : "");
+      card.dataset.game = gm.id;
+      card.innerHTML = `<span class="gl-icon">${gm.icon}</span>`
+        + `<span class="gl-domain">${gm.domainLabel}</span>`
+        + `<span class="gl-name">${gm.name}</span>`
+        + `<span class="gl-desc">${gm.desc}</span>`;
+      cards.appendChild(card);
     });
-    if (!groups.children.length) groups.innerHTML = `<p class="gl-empty">未找到匹配的训练游戏。</p>`;
+    groups.appendChild(cards);
   }
   function switchGame(g) {
     if (g === currentGame || !GAME_BY_ID[g]) return;

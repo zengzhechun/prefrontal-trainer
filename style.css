@@ -107,7 +107,7 @@ body {
 .icon-btn.small { width: 32px; height: 32px; font-size: 14px; border-radius: 9px; }
 .icon-btn:hover { transform: translateY(-2px); background: var(--cell-bg-hover); }
 
-/* ===== 游戏库（卡片网格，按功能域分组 + 搜索） ===== */
+/* ===== 游戏库（横向流式卡片网格 + 搜索） ===== */
 .game-library {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -119,6 +119,7 @@ body {
 .gl-search { margin-bottom: 12px; }
 .gl-search input {
   width: 100%;
+  max-width: 360px;
   box-sizing: border-box;
   padding: 9px 14px;
   border-radius: 10px;
@@ -131,25 +132,18 @@ body {
 }
 .gl-search input:focus { border-color: var(--accent); }
 .gl-search input::placeholder { color: var(--text-dim); }
-.gl-group { margin-bottom: 12px; }
-.gl-group:last-child { margin-bottom: 0; }
-.gl-group-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  margin: 0 0 8px 2px;
-}
 .gl-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 .gl-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto 1fr;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: start;
   text-align: left;
   padding: 12px 14px;
   border-radius: 12px;
@@ -159,6 +153,7 @@ body {
   color: var(--text);
   transition: transform 0.18s, border-color 0.2s, background 0.2s, box-shadow 0.2s;
   font-family: var(--font);
+  min-height: 90px;
 }
 .gl-card:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--cell-bg-hover); }
 .gl-card.active {
@@ -167,10 +162,11 @@ body {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 8px 22px rgba(108, 140, 255, 0.35);
 }
-.gl-card .gl-icon { font-size: 20px; line-height: 1; }
-.gl-card .gl-name { font-weight: 700; font-size: 15px; }
-.gl-card .gl-domain { font-size: 11px; opacity: 0.82; }
-.gl-card .gl-desc { font-size: 11px; opacity: 0.75; line-height: 1.35; }
+.gl-card .gl-icon { grid-row: 1 / 4; grid-column: 1; align-self: center; font-size: 26px; line-height: 1; }
+.gl-card .gl-domain { grid-row: 1; grid-column: 2; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--accent); }
+.gl-card.active .gl-domain { color: rgba(255, 255, 255, 0.9); }
+.gl-card .gl-name { grid-row: 2; grid-column: 2; font-weight: 700; font-size: 15px; }
+.gl-card .gl-desc { grid-row: 3; grid-column: 2; font-size: 11px; opacity: 0.75; line-height: 1.35; }
 .gl-empty { font-size: 12px; color: var(--text-dim); padding: 8px 2px; }
 
 /* ===== 布局 ===== */
