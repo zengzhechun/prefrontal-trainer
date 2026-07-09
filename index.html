@@ -155,6 +155,39 @@
           </section>
         </div>
 
+        <!-- ===== Stroop 设置 ===== -->
+        <div id="stroopSettings" class="hidden">
+          <section class="field">
+            <label class="field-label">试次数量</label>
+            <select id="spTrials" class="select">
+              <option value="15">15 题</option>
+              <option value="20" selected>20 题</option>
+              <option value="30">30 题</option>
+              <option value="40">40 题</option>
+            </select>
+          </section>
+
+          <section class="field">
+            <label class="field-label">一致性</label>
+            <div class="seg" id="spCongSeg">
+              <button class="seg-btn active" data-cong="mixed">混合</button>
+              <button class="seg-btn" data-cong="incongruent">仅不一致</button>
+              <button class="seg-btn" data-cong="congruent">仅一致</button>
+            </div>
+            <span class="hint">仅不一致＝字义与颜色冲突，难度最高</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">每题时限</label>
+            <select id="spPerLimit" class="select">
+              <option value="0" selected>不限时</option>
+              <option value="2000">2 秒</option>
+              <option value="1000">1 秒</option>
+            </select>
+            <span class="hint">超时记为错误并自动跳到下一题</span>
+          </section>
+        </div>
+
         <section class="field">
           <label class="check"><input type="checkbox" id="soundOn" checked /><span class="check-box"></span><span class="check-text">音效反馈</span></label>
         </section>
@@ -239,6 +272,42 @@
             <button class="btn nb-resp" id="nbAudBtn" disabled>声音匹配 (J)</button>
           </div>
         </div>
+
+        <!-- Stroop 舞台 -->
+        <div id="stroopStage" class="hidden">
+          <div class="hud hud-stroop">
+            <div class="hud-item"><span class="hud-label">进度</span><span class="hud-value" id="spTrialVal">0/20</span></div>
+            <div class="hud-item"><span class="hud-label">正确率</span><span class="hud-value" id="spAccVal">—</span></div>
+            <div class="hud-item"><span class="hud-label">平均反应</span><span class="hud-value" id="spRtVal">—</span></div>
+          </div>
+
+          <div class="board-wrap stroop-wrap">
+            <div class="stroop-word" id="spWord">色</div>
+            <div class="overlay hidden" id="spOverlay">
+              <div class="overlay-card">
+                <div class="overlay-emoji" id="spOverlayEmoji">🎨</div>
+                <h3 id="spOverlayTitle">准备开始</h3>
+                <p id="spOverlayDesc">看着「字的颜色」而非字义，从下方选出对应的颜色（也可按 1–4 键）。</p>
+                <button class="btn primary" id="spOverlayStart">开始训练</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sp-buttons" id="spButtons">
+            <button class="sp-color-btn" data-color="0" style="--c:#ff5d73">红<kbd>1</kbd></button>
+            <button class="sp-color-btn" data-color="1" style="--c:#2ecc71">绿<kbd>2</kbd></button>
+            <button class="sp-color-btn" data-color="2" style="--c:#4f8cff">蓝<kbd>3</kbd></button>
+            <button class="sp-color-btn" data-color="3" style="--c:#ffc233">黄<kbd>4</kbd></button>
+          </div>
+
+          <div class="controls">
+            <button class="btn primary" id="spStartBtn">开始</button>
+            <button class="btn" id="spPauseBtn" disabled>暂停</button>
+            <button class="btn" id="spResumeBtn" disabled>恢复</button>
+            <button class="btn" id="spEndBtn" disabled>结束本轮</button>
+            <button class="btn ghost" id="spResetBtn">重置</button>
+          </div>
+        </div>
       </section>
 
       <!-- ===== 右侧：历史记录 ===== -->
@@ -253,6 +322,7 @@
             <option value="all">全部游戏</option>
             <option value="schulte">舒尔特</option>
             <option value="nback">N-Back</option>
+            <option value="stroop">Stroop</option>
           </select>
           <select id="filterLayout" class="select">
             <option value="all">全部布局</option>

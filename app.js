@@ -28,6 +28,11 @@
       desc: "同时记忆位置与声音刺激，训练工作记忆的维持与在线更新。",
       settings: "nbackSettings", stage: "nbackStage", reset: nbReset, idle: nbIdle,
     },
+    {
+      id: "stroop", name: "Stroop 色词", domain: "抑制", domainLabel: "抑制控制", icon: "🎨",
+      desc: "忽略字义、只认字的颜色，训练对优势反应的抑制能力。",
+      settings: "stroopSettings", stage: "stroopStage", reset: spReset, idle: spReset,
+    },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 
@@ -120,12 +125,14 @@
     if (fg === "all") {
       const sc = all.filter((r) => r.game === "schulte").length;
       const nb = all.filter((r) => r.game === "nback").length;
+      const sp = all.filter((r) => r.game === "stroop").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
         <div class="stat"><div class="v">${all.length}</div><div class="l">总场次</div></div>
         <div class="stat"><div class="v">${sc}</div><div class="l">舒尔特</div></div>
         <div class="stat"><div class="v">${nb}</div><div class="l">N-Back</div></div>
+        <div class="stat"><div class="v">${sp}</div><div class="l">Stroop</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -146,8 +153,10 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : "N-Back";
-      const resTxt = r.success ? (r.game === "nback" ? "达标" : "完成") : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : "Stroop");
+      const resTxt = r.success
+        ? (r.game === "nback" ? "达标" : "完成")
+        : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
       const resCls = r.success ? "res-ok" : "res-fail";
       let tag2 = "", meta = "";
       if (r.game === "schulte") {
@@ -157,18 +166,24 @@
         const interfTxt = Object.entries(r.interf || {}).filter(([, v]) => v).map(([k]) => ({ color: "色", font: "字", jitter: "抖", mirror: "镜", zoneColor: "区", rotation: "转" }[k])).join("");
         tag2 = `<span class="mode-badge ${r.mode === "timer" ? "timer" : ""}">${modeTxt}</span><span class="mode-badge">${orderTxt}</span>`;
         meta = `${r.size}×${r.size}·${LAYOUT_LABEL[r.layout] || "方"}${offsetTxt ? "·" + offsetTxt : ""}${interfTxt ? "·" + interfTxt : ""}`;
-      } else {
+      } else if (r.game === "nback") {
         tag2 = `<span class="mode-badge timer">N=${r.level}</span><span class="mode-badge">${CHANNEL_LABEL[r.channels] || "双"}</span>`;
         meta = `${r.trials} 试次`;
+      } else {
+        const congLabel = { mixed: "混合", incongruent: "仅不一致", congruent: "仅一致" }[r.congruency] || "混合";
+        const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
+        tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
+        meta = `${r.trials} 试次·${limitLabel}`;
       }
       const d = new Date(r.date);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const rtExtra = (r.game === "stroop" && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
       li.innerHTML = `
         <div class="row1">
           <span><span class="game-badge">${gameBadge}</span>${tag2}&nbsp;${meta}</span>
           <span class="${resCls}">${resTxt}</span>
         </div>
-        <div class="meta"><span>⏱ ${fmtMetric(r)}</span></div>
+        <div class="meta"><span>⏱ ${fmtMetric(r)}</span>${rtExtra}</div>
         <div class="date">${dateStr}</div>`;
       list.appendChild(li);
     });
@@ -630,6 +645,139 @@
   nbBindSeg();
   function nbIdle() { nbReset(); }
 
+  // ============================================================
+  //  模式三：Stroop 色词测验（抑制控制）
+  // ============================================================
+  const SP_COLORS = [
+    { name: "红", hex: "#ff5d73" },
+    { name: "绿", hex: "#2ecc71" },
+    { name: "蓝", hex: "#4f8cff" },
+    { name: "黄", hex: "#ffc233" },
+  ];
+  const SP_CONG_LABEL = { mixed: "混合", incongruent: "仅不一致", congruent: "仅一致" };
+  const SP = {
+    running: false, paused: false, finished: false, advancing: false,
+    trials: 20, congruency: "mixed", perLimit: 0,
+    t: 0, word: 0, ink: 0, trialStart: 0,
+    correct: 0, total: 0, rtSum: 0, rtCount: 0,
+    timerId: null, advanceId: null,
+  };
+  const SPword = $("spWord");
+  const SPtrial = $("spTrialVal"), SPacc = $("spAccVal"), SPrt = $("spRtVal");
+  const SPoverlay = $("spOverlay"), SPoe = $("spOverlayEmoji"), SPot = $("spOverlayTitle"), SPod = $("spOverlayDesc"), SPos = $("spOverlayStart");
+  const SPstart = $("spStartBtn"), SPpause = $("spPauseBtn"), SPresume = $("spResumeBtn"), SPend = $("spEndBtn"), SPreset = $("spResetBtn");
+  const SPbtns = Array.from(document.querySelectorAll(".sp-color-btn"));
+
+  function spPickColors() {
+    const word = Math.floor(Math.random() * 4);
+    let ink;
+    if (SP.congruency === "congruent") ink = word;
+    else if (SP.congruency === "incongruent") { do { ink = Math.floor(Math.random() * 4); } while (ink === word); }
+    else ink = Math.floor(Math.random() * 4);
+    return { word, ink };
+  }
+  function spUpdateHud() {
+    const shown = (SP.running || SP.finished) ? Math.min(SP.t + 1, SP.trials) : 0;
+    SPtrial.textContent = `${shown}/${SP.trials}`;
+    SPacc.textContent = SP.total ? Math.round((SP.correct / SP.total) * 100) + "%" : "—";
+    SPrt.textContent = SP.rtCount ? Math.round(SP.rtSum / SP.rtCount) + "ms" : "—";
+  }
+  function spShowTrial(t) {
+    if (t >= SP.trials) { spFinish(false); return; }
+    SP.t = t; SP.advancing = false;
+    const { word, ink } = spPickColors();
+    SP.word = word; SP.ink = ink;
+    SP.trialStart = performance.now();
+    SPword.textContent = SP_COLORS[word].name;
+    SPword.style.color = SP_COLORS[ink].hex;
+    SPword.classList.remove("sp-correct", "sp-wrong");
+    SPbtns.forEach((b) => (b.disabled = false));
+    spUpdateHud();
+    if (SP.perLimit > 0) SP.timerId = setTimeout(() => spRespond(-1), SP.perLimit);
+  }
+  function spRespond(choice) {
+    if (!SP.running || SP.paused || SP.advancing) return;
+    clearTimeout(SP.timerId);
+    SP.advancing = true;
+    const correct = choice === SP.ink;
+    const rt = performance.now() - SP.trialStart;
+    SP.total++;
+    if (correct) { SP.correct++; SP.rtSum += rt; SP.rtCount++; if (state_sound) beep(740, 0.07, "sine"); }
+    else { if (state_sound) beep(200, 0.12, "square", 0.05); }
+    SPword.classList.add(correct ? "sp-correct" : "sp-wrong");
+    if (choice >= 0) { const b = SPbtns[choice]; if (b) { b.classList.add(correct ? "lit-ok" : "lit-bad"); setTimeout(() => b.classList.remove("lit-ok", "lit-bad"), 300); } }
+    spUpdateHud();
+    SPbtns.forEach((b) => (b.disabled = true));
+    SP.advanceId = setTimeout(() => { SP.advanceId = null; SPword.classList.remove("sp-correct", "sp-wrong"); spShowTrial(SP.t + 1); }, 300);
+  }
+  function spStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    SP.trials = clampInt($("spTrials").value, 5, 60, 20);
+    const congBtn = $("spCongSeg").querySelector(".seg-btn.active");
+    SP.congruency = (congBtn && congBtn.dataset.cong) || "mixed";
+    SP.perLimit = clampInt($("spPerLimit").value, 0, 5000, 0);
+    SP.correct = SP.total = SP.rtSum = SP.rtCount = 0; SP.t = 0; SP.advancing = false;
+    SP.running = true; SP.paused = false; SP.finished = false;
+    SPstart.disabled = true; SPpause.disabled = false; SPend.disabled = false; SPresume.disabled = true;
+    SPoverlay.classList.add("hidden");
+    spShowTrial(0);
+  }
+  function spPause() {
+    if (!SP.running || SP.paused) return;
+    SP.paused = true;
+    clearTimeout(SP.timerId); clearTimeout(SP.advanceId); SP.advanceId = null;
+    SPpause.disabled = true; SPresume.disabled = false;
+    SPbtns.forEach((b) => (b.disabled = true));
+    spShowOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", false);
+    if (state_sound) beep(520, 0.1, "sine");
+  }
+  function spResume() {
+    if (!SP.running || !SP.paused) return;
+    SP.paused = false; SPoverlay.classList.add("hidden");
+    SPpause.disabled = false; SPresume.disabled = true;
+    spShowTrial(SP.advancing ? SP.t + 1 : SP.t);
+  }
+  function spReset() {
+    clearTimeout(SP.timerId); clearTimeout(SP.advanceId); SP.advanceId = null;
+    SP.running = false; SP.paused = false; SP.finished = false; SP.advancing = false;
+    SPstart.disabled = false; SPpause.disabled = true; SPresume.disabled = true; SPend.disabled = true;
+    SPbtns.forEach((b) => { b.disabled = true; b.classList.remove("lit-ok", "lit-bad"); });
+    SPword.classList.remove("sp-correct", "sp-wrong");
+    SPword.textContent = "色"; SPword.style.color = "";
+    spUpdateHud();
+    spShowOverlay("🎨", "准备开始", "看着「字的颜色」而非字义，从下方选出对应的颜色（也可按 1–4 键）。", "开始训练", true);
+  }
+  function spEnd() { if (!SP.running || SP.finished) return; spFinish(true); }
+  function spFinish(manual) {
+    clearTimeout(SP.timerId); clearTimeout(SP.advanceId); SP.advanceId = null;
+    SP.running = false; SP.finished = true; SP.paused = false; SP.advancing = false;
+    SPstart.disabled = false; SPpause.disabled = true; SPresume.disabled = true; SPend.disabled = true;
+    SPbtns.forEach((b) => (b.disabled = true));
+    const acc = SP.total ? (SP.correct / SP.total) * 100 : 0;
+    const avgRt = SP.rtCount ? Math.round(SP.rtSum / SP.rtCount) : 0;
+    const success = !manual;
+    saveRecord({ game: "stroop", trials: SP.trials, congruency: SP.congruency, perLimit: SP.perLimit, success, metric: Math.round(acc), unit: "%", metricLabel: "正确率", betterIsLower: false, rtAvg: avgRt, date: Date.now() });
+    const emoji = success ? "🎉" : "🏁";
+    const title = success ? "本轮完成！" : "已结束本轮";
+    const desc = `正确率 ${Math.round(acc)}% · 平均反应 ${avgRt}ms（共 ${SP.total} 题）`;
+    spShowOverlay(emoji, title, desc, "再来一局", true);
+  }
+  function spShowOverlay(emoji, title, desc, btnText, startAction) {
+    SPoe.textContent = emoji; SPot.textContent = title; SPod.textContent = desc; SPos.textContent = btnText;
+    SPos.dataset.action = startAction ? "start" : "resume"; SPoverlay.classList.remove("hidden");
+  }
+  SPos.addEventListener("click", () => { if (SPos.dataset.action === "start") spStart(); else spResume(); });
+  SPbtns.forEach((b) => b.addEventListener("click", () => spRespond(parseInt(b.dataset.color, 10))));
+  SPstart.addEventListener("click", spStart);
+  SPpause.addEventListener("click", spPause);
+  SPresume.addEventListener("click", spResume);
+  SPend.addEventListener("click", spEnd);
+  SPreset.addEventListener("click", spReset);
+  const SPcongSeg = $("spCongSeg");
+  SPcongSeg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; SPcongSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); SP.congruency = btn.dataset.cong; });
+  $("spTrials").addEventListener("change", (e) => { SP.trials = clampInt(e.target.value, 5, 60, 20); spUpdateHud(); });
+  $("spPerLimit").addEventListener("change", (e) => { SP.perLimit = clampInt(e.target.value, 0, 5000, 0); });
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -639,11 +787,15 @@
       if (e.code === "Space") { e.preventDefault(); if (!S.running) S_startGame(); else if (S.paused) S_resumeGame(); else S_endGame(); }
       else if (e.key.toLowerCase() === "r") S_reset();
       else if (e.key.toLowerCase() === "e") S_endGame();
-    } else {
+    } else if (currentGame === "nback") {
       if (e.key.toLowerCase() === "f") nbRespond("pos");
       else if (e.key.toLowerCase() === "j") nbRespond("aud");
       else if (e.code === "Space") { e.preventDefault(); if (!NB.running) nbStart(); else if (NB.paused) nbResume(); else nbEnd(); }
       else if (e.key.toLowerCase() === "r") nbReset();
+    } else if (currentGame === "stroop") {
+      if (e.key >= "1" && e.key <= "4") { e.preventDefault(); spRespond(parseInt(e.key, 10) - 1); }
+      else if (e.code === "Space") { e.preventDefault(); if (!SP.running) spStart(); else if (SP.paused) spResume(); else spEnd(); }
+      else if (e.key.toLowerCase() === "r") spReset();
     }
   });
 

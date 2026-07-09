@@ -418,9 +418,50 @@ body {
 .nb-resp { min-width: 150px; }
 .nb-resp.lit { background: linear-gradient(135deg, var(--good), #2bb37e); border-color: transparent; color: #fff; }
 
+/* ===== Stroop 色词测验专属 ===== */
+.stroop-wrap { flex-direction: column; gap: 8px; min-height: 300px; }
+.stroop-word {
+  font-size: clamp(56px, 16vw, 140px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.12s, color 0.18s, opacity 0.18s;
+}
+.stroop-word.sp-correct { animation: spPop 0.3s ease; }
+.stroop-word.sp-wrong { animation: spShake 0.3s ease; }
+@keyframes spPop { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes spShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-9px); } 75% { transform: translateX(9px); } }
+.sp-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 560px; width: 100%; margin: 0 auto; }
+.sp-color-btn {
+  position: relative;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 18px 8px;
+  font-size: clamp(18px, 3vw, 24px);
+  font-weight: 700;
+  color: #fff;
+  background: var(--c);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
+  font-family: var(--font);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.sp-color-btn:hover:not(:disabled) { transform: translateY(-3px); filter: brightness(1.08); }
+.sp-color-btn:disabled { cursor: not-allowed; opacity: 0.85; }
+.sp-color-btn kbd {
+  position: absolute; top: 6px; right: 8px;
+  font-size: 11px; opacity: 0.9; font-family: var(--font);
+  background: rgba(0, 0, 0, 0.28); border-radius: 5px; padding: 1px 6px;
+}
+.sp-color-btn.lit-ok { box-shadow: 0 0 0 3px var(--good), 0 0 22px rgba(54, 211, 153, 0.6); transform: translateY(-2px); }
+.sp-color-btn.lit-bad { box-shadow: 0 0 0 3px var(--bad), 0 0 22px rgba(255, 107, 129, 0.6); transform: translateY(-2px); }
+@media (max-width: 560px) { .sp-buttons { grid-template-columns: repeat(2, 1fr); } }
+
 /* ===== 历史记录 ===== */
 .history-head { display: flex; align-items: center; justify-content: space-between; }
-.history-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
+.history-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 9px; margin-bottom: 14px; }
 .stat { background: var(--cell-bg); border-radius: 11px; padding: 9px 11px; }
 .stat .v { font-size: 18px; font-weight: 700; }
 .stat .l { font-size: 10px; color: var(--text-dim); }
