@@ -23,15 +23,11 @@
       <button id="themeBtn" class="icon-btn" title="切换主题" aria-label="切换主题">◐</button>
     </header>
 
-    <div class="game-tabs" id="gameTabs">
-      <button class="game-tab active" data-game="schulte">
-        <span class="gt-icon">▦</span>
-        <span class="gt-text">舒尔特方格<small>视觉搜索</small></span>
-      </button>
-      <button class="game-tab" data-game="nback">
-        <span class="gt-icon">◉</span>
-        <span class="gt-text">Dual N-Back<small>工作记忆</small></span>
-      </button>
+    <div class="game-library" id="gameLibrary">
+      <div class="gl-search">
+        <input type="search" id="glSearch" placeholder="搜索训练游戏…" aria-label="搜索训练游戏" />
+      </div>
+      <div class="gl-groups" id="glGroups"></div>
     </div>
 
     <main class="layout">

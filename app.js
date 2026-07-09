@@ -14,6 +14,23 @@
   const ORDER_LABEL = { asc: "正序", desc: "倒序" };
   const CHANNEL_LABEL = { dual: "双通道", visual: "仅视觉", audio: "仅听觉" };
 
+  // ---------- 游戏注册表（Phase 0：数据驱动的游戏库） ----------
+  // 每个游戏声明元数据 + 其设置面板/舞台元素 id + 生命周期钩子（reset 停止并复位，idle 重建预览）。
+  // 新增游戏只需在此登记一项，并在历史 filterGame 中加入对应选项即可，无需改动切换逻辑。
+  const GAMES = [
+    {
+      id: "schulte", name: "舒尔特方格", domain: "注意", domainLabel: "视觉搜索", icon: "▦",
+      desc: "按序快速定位数字，训练视觉搜索速度与选择性注意。",
+      settings: "schulteSettings", stage: "schulteStage", reset: S_reset, idle: S_refreshIdle,
+    },
+    {
+      id: "nback", name: "Dual N-Back", domain: "记忆", domainLabel: "工作记忆", icon: "◉",
+      desc: "同时记忆位置与声音刺激，训练工作记忆的维持与在线更新。",
+      settings: "nbackSettings", stage: "nbackStage", reset: nbReset, idle: nbIdle,
+    },
+  ];
+  const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
+
   // ---------- 安全持久化（file:// 下部分浏览器会禁用 localStorage） ----------
   const memStore = {};
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return k in memStore ? memStore[k] : null; } };
@@ -211,24 +228,58 @@
   ["filterGame", "filterLayout", "filterOrder"].forEach((id) => $(id).addEventListener("change", renderHistory));
 
   // ============================================================
-  //  游戏切换
+  //  游戏切换（数据驱动：基于 GAMES 注册表）
   // ============================================================
   let currentGame = "schulte";
+  function renderGameLibrary() {
+    const groups = $("glGroups");
+    const q = ($("glSearch").value || "").trim().toLowerCase();
+    groups.innerHTML = "";
+    const domains = [];
+    GAMES.forEach((gm) => { if (!domains.includes(gm.domain)) domains.push(gm.domain); });
+    domains.forEach((dom) => {
+      const items = GAMES.filter((gm) => gm.domain === dom && (!q || (gm.name + " " + gm.desc + " " + gm.domainLabel).toLowerCase().includes(q)));
+      if (!items.length) return;
+      const gWrap = document.createElement("div");
+      gWrap.className = "gl-group";
+      const title = document.createElement("div");
+      title.className = "gl-group-title";
+      title.textContent = dom;
+      gWrap.appendChild(title);
+      const cards = document.createElement("div");
+      cards.className = "gl-cards";
+      items.forEach((gm) => {
+        const card = document.createElement("button");
+        card.className = "gl-card" + (gm.id === currentGame ? " active" : "");
+        card.dataset.game = gm.id;
+        card.innerHTML = `<span class="gl-icon">${gm.icon}</span>`
+          + `<span class="gl-name">${gm.name}</span>`
+          + `<span class="gl-domain">${gm.domainLabel}</span>`
+          + `<span class="gl-desc">${gm.desc}</span>`;
+        cards.appendChild(card);
+      });
+      gWrap.appendChild(cards);
+      groups.appendChild(gWrap);
+    });
+    if (!groups.children.length) groups.innerHTML = `<p class="gl-empty">未找到匹配的训练游戏。</p>`;
+  }
   function switchGame(g) {
-    if (g === currentGame) return;
-    // 停止另一个游戏
-    if (g === "schulte") nbReset(); else S_reset();
+    if (g === currentGame || !GAME_BY_ID[g]) return;
+    const prev = GAME_BY_ID[currentGame];
+    if (prev && prev.reset) prev.reset();           // 停止并复位上一游戏
     currentGame = g;
-    document.querySelectorAll(".game-tab").forEach((t) => t.classList.toggle("active", t.dataset.game === g));
-    $("schulteSettings").classList.toggle("hidden", g !== "schulte");
-    $("nbackSettings").classList.toggle("hidden", g !== "nback");
-    $("schulteStage").classList.toggle("hidden", g !== "schulte");
-    $("nbackStage").classList.toggle("hidden", g !== "nback");
+    document.querySelectorAll(".gl-card").forEach((c) => c.classList.toggle("active", c.dataset.game === g));
+    GAMES.forEach((gm) => {
+      $(gm.settings).classList.toggle("hidden", gm.id !== g);
+      $(gm.stage).classList.toggle("hidden", gm.id !== g);
+    });
     $("filterGame").value = g;
-    if (g === "schulte") S_refreshIdle(); else nbIdle();
+    const cur = GAME_BY_ID[g];
+    if (cur && cur.idle) cur.idle();
     renderHistory();
   }
-  document.querySelectorAll(".game-tab").forEach((t) => t.addEventListener("click", () => switchGame(t.dataset.game)));
+  $("glSearch").addEventListener("input", renderGameLibrary);
+  $("glGroups").addEventListener("click", (e) => { const card = e.target.closest(".gl-card"); if (card) switchGame(card.dataset.game); });
 
   // ============================================================
   //  模式一：舒尔特方格
@@ -600,6 +651,7 @@
   function init() {
     if (lsGet(THEME_KEY) === "light") document.body.classList.add("light");
     nbBuildGrid();
+    renderGameLibrary();
     $("filterGame").value = "schulte";
     renderHistory();
     S_refreshIdle();

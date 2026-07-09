@@ -107,41 +107,71 @@ body {
 .icon-btn.small { width: 32px; height: 32px; font-size: 14px; border-radius: 9px; }
 .icon-btn:hover { transform: translateY(-2px); background: var(--cell-bg-hover); }
 
-/* ===== 游戏切换标签 ===== */
-.game-tabs {
-  display: flex;
-  gap: 12px;
+/* ===== 游戏库（卡片网格，按功能域分组 + 搜索） ===== */
+.game-library {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 16px;
-  padding: 10px;
+  padding: 14px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
-.game-tab {
-  flex: 1 1 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
+.gl-search { margin-bottom: 12px; }
+.gl-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  outline: none;
+}
+.gl-search input:focus { border-color: var(--accent); }
+.gl-search input::placeholder { color: var(--text-dim); }
+.gl-group { margin-bottom: 12px; }
+.gl-group:last-child { margin-bottom: 0; }
+.gl-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   color: var(--text-dim);
+  text-transform: uppercase;
+  margin: 0 0 8px 2px;
+}
+.gl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+.gl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  border: 1px solid var(--panel-border);
+  background: var(--cell-bg);
+  color: var(--text);
+  transition: transform 0.18s, border-color 0.2s, background 0.2s, box-shadow 0.2s;
   font-family: var(--font);
 }
-.game-tab .gt-icon { font-size: 22px; }
-.game-tab .gt-text { display: flex; flex-direction: column; line-height: 1.15; font-weight: 600; font-size: 15px; text-align: left; }
-.game-tab .gt-text small { font-size: 10px; font-weight: 400; opacity: 0.8; }
-.game-tab:hover { color: var(--text); }
-.game-tab.active {
+.gl-card:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--cell-bg-hover); }
+.gl-card.active {
   color: #fff;
+  border-color: transparent;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 8px 22px rgba(108, 140, 255, 0.35);
 }
+.gl-card .gl-icon { font-size: 20px; line-height: 1; }
+.gl-card .gl-name { font-weight: 700; font-size: 15px; }
+.gl-card .gl-domain { font-size: 11px; opacity: 0.82; }
+.gl-card .gl-desc { font-size: 11px; opacity: 0.75; line-height: 1.35; }
+.gl-empty { font-size: 12px; color: var(--text-dim); padding: 8px 2px; }
 
 /* ===== 布局 ===== */
 .layout {
