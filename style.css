@@ -455,6 +455,35 @@ body {
 .sp-color-btn.lit-bad { box-shadow: 0 0 0 3px var(--bad), 0 0 22px rgba(255, 107, 129, 0.6); transform: translateY(-2px); }
 @media (max-width: 560px) { .sp-buttons { grid-template-columns: repeat(2, 1fr); } }
 
+/* ===== Go/No-Go 专属 ===== */
+.gonogo-wrap { flex-direction: column; gap: 14px; min-height: 320px; }
+.gn-stim {
+  width: clamp(120px, 30vmin, 210px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(30px, 8vmin, 56px); font-weight: 800; color: #fff;
+  opacity: 0; transform: scale(0.9);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  user-select: none; -webkit-user-select: none;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.gn-stim.show { opacity: 1; transform: scale(1); }
+.gn-stim.pop { animation: gnPop 0.18s ease; }
+@keyframes gnPop { 0% { transform: scale(0.82); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.gn-stim.go { background: linear-gradient(135deg, #36d399, #1f9e6e); box-shadow: 0 0 42px rgba(54, 211, 153, 0.6); }
+.gn-stim.nogo { background: linear-gradient(135deg, #ff6b81, #d83a52); box-shadow: 0 0 42px rgba(255, 107, 129, 0.6); }
+.gn-feedback { min-height: 22px; font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+.gn-feedback.ok { color: var(--good); }
+.gn-feedback.bad { color: var(--bad); }
+.gn-legend { display: flex; gap: 18px; justify-content: center; font-size: 12px; color: var(--text-dim); }
+.gn-legend b { padding: 1px 8px; border-radius: 8px; }
+.gn-legend .gn-go { background: rgba(54, 211, 153, 0.22); color: var(--good); }
+.gn-legend .gn-nogo { background: rgba(255, 107, 129, 0.22); color: var(--bad); }
+.gn-responses { display: flex; gap: 12px; justify-content: center; }
+.gn-resp { min-width: 170px; background: linear-gradient(135deg, var(--good), #2bb37e); border-color: transparent; color: #fff; }
+.gn-resp:disabled { opacity: 0.4; }
+
 /* ===== 历史记录 ===== */
 .history-head { display: flex; align-items: center; justify-content: space-between; }
 .history-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 9px; margin-bottom: 14px; }

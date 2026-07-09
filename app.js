@@ -1,7 +1,7 @@
 /* ============================================================
    前额叶训练中心 · 游戏逻辑
    纯前端 / 无依赖 / localStorage 持久化成绩
-   包含：舒尔特方格（模式一） + Dual N-Back（模式二）
+   包含：舒尔特方格 + Dual N-Back + Stroop 色词 + Go/No-Go
    ============================================================ */
 
 (() => {
@@ -32,6 +32,11 @@
       id: "stroop", name: "Stroop 色词", domain: "抑制", domainLabel: "抑制控制", icon: "🎨",
       desc: "忽略字义、只认字的颜色，训练对优势反应的抑制能力。",
       settings: "stroopSettings", stage: "stroopStage", reset: spReset, idle: spReset,
+    },
+    {
+      id: "gonogo", name: "Go/No-Go", domain: "抑制", domainLabel: "反应抑制", icon: "🛑",
+      desc: "看见 GO 就反应、看见停就忍住，训练对优势反应的运动抑制。",
+      settings: "gonogoSettings", stage: "gonogoStage", reset: gnReset, idle: gnReset,
     },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
@@ -126,6 +131,7 @@
       const sc = all.filter((r) => r.game === "schulte").length;
       const nb = all.filter((r) => r.game === "nback").length;
       const sp = all.filter((r) => r.game === "stroop").length;
+      const gn = all.filter((r) => r.game === "gonogo").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
@@ -133,6 +139,7 @@
         <div class="stat"><div class="v">${sc}</div><div class="l">舒尔特</div></div>
         <div class="stat"><div class="v">${nb}</div><div class="l">N-Back</div></div>
         <div class="stat"><div class="v">${sp}</div><div class="l">Stroop</div></div>
+        <div class="stat"><div class="v">${gn}</div><div class="l">Go/No-Go</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -153,7 +160,7 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : "Stroop");
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : "Go/No-Go"));
       const resTxt = r.success
         ? (r.game === "nback" ? "达标" : "完成")
         : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
@@ -169,15 +176,20 @@
       } else if (r.game === "nback") {
         tag2 = `<span class="mode-badge timer">N=${r.level}</span><span class="mode-badge">${CHANNEL_LABEL[r.channels] || "双"}</span>`;
         meta = `${r.trials} 试次`;
-      } else {
+      } else if (r.game === "stroop") {
         const congLabel = { mixed: "混合", incongruent: "仅不一致", congruent: "仅一致" }[r.congruency] || "混合";
         const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
         tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
         meta = `${r.trials} 试次·${limitLabel}`;
+      } else {
+        const winLabel = r.windowMs ? `${r.windowMs}ms窗口` : "";
+        const goLabel = r.goRatio ? `GO${r.goRatio}%` : "";
+        tag2 = `<span class="mode-badge timer">反应抑制</span>`;
+        meta = `${r.trials} 试次·${winLabel}${goLabel ? "·" + goLabel : ""}`;
       }
       const d = new Date(r.date);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const rtExtra = (r.game === "stroop" && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
+      const rtExtra = ((r.game === "stroop" || r.game === "gonogo") && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
       li.innerHTML = `
         <div class="row1">
           <span><span class="game-badge">${gameBadge}</span>${tag2}&nbsp;${meta}</span>
@@ -766,6 +778,144 @@
   $("spTrials").addEventListener("change", (e) => { SP.trials = clampInt(e.target.value, 5, 60, 20); spUpdateHud(); });
   $("spPerLimit").addEventListener("change", (e) => { SP.perLimit = clampInt(e.target.value, 0, 5000, 0); });
 
+  // ============================================================
+  //  模式四：Go/No-Go（反应抑制 / 运动抑制）
+  // ============================================================
+  const GN = {
+    running: false, paused: false, finished: false, advancing: false,
+    trials: 30, windowMs: 800, goRatio: 0.75,
+    t: 0, isGo: true, responded: false, trialStart: 0,
+    hits: 0, correctRej: 0, commissions: 0, omissions: 0, rtSum: 0, rtCount: 0, total: 0,
+    seq: [], timerId: null, advanceId: null,
+  };
+  const gnStim = $("gnStim"), gnFeedback = $("gnFeedback");
+  const gnTrial = $("gnTrialVal"), gnAcc = $("gnAccVal"), gnRt = $("gnRtVal");
+  const gnOverlay = $("gnOverlay"), gnOe = $("gnOverlayEmoji"), gnot = $("gnOverlayTitle"), gnod = $("gnOverlayDesc"), gnos = $("gnOverlayStart");
+  const gnStartBtn = $("gnStartBtn"), gnPauseBtn = $("gnPauseBtn"), gnResumeBtn = $("gnResumeBtn"), gnEndBtn = $("gnEndBtn"), gnResetBtn = $("gnResetBtn"), gnRespBtn = $("gnRespBtn");
+
+  // 生成试次序列：保证 Go/No-Go 比例，且连续 No-Go 不超过 2 次
+  function gnBuildSeq() {
+    const n = GN.trials;
+    const nGo = Math.round(n * GN.goRatio);
+    const nNo = n - nGo;
+    const base = Array(nGo).fill(true).concat(Array(nNo).fill(false));
+    let seq = null;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const cand = shuffle(base.slice());
+      let ok = true, consec = 0;
+      for (const v of cand) { if (!v) { if (++consec >= 3) { ok = false; break; } } else consec = 0; }
+      if (ok) { seq = cand; break; }
+    }
+    GN.seq = seq || shuffle(base.slice());
+  }
+  function gnUpdateHud() {
+    const shown = (GN.running || GN.finished) ? Math.min(GN.t + 1, GN.trials) : 0;
+    gnTrial.textContent = `${shown}/${GN.trials}`;
+    const acc = GN.total ? ((GN.hits + GN.correctRej) / GN.total) * 100 : 0;
+    gnAcc.textContent = GN.total ? Math.round(acc) + "%" : "—";
+    gnRt.textContent = GN.rtCount ? Math.round(GN.rtSum / GN.rtCount) + "ms" : "—";
+  }
+  function gnShowTrial(t) {
+    if (t >= GN.trials) { gnFinish(false); return; }
+    GN.t = t; GN.advancing = false; GN.responded = false;
+    const isGo = GN.seq[t]; GN.isGo = isGo;
+    GN.trialStart = performance.now();
+    gnStim.className = "gn-stim " + (isGo ? "go" : "nogo") + " show pop";
+    gnStim.textContent = isGo ? "GO" : "停";
+    gnFeedback.textContent = "";
+    gnUpdateHud();
+    GN.timerId = setTimeout(gnResolve, GN.windowMs);
+  }
+  function gnRespond() {
+    if (!GN.running || GN.paused || GN.advancing) return;
+    GN.responded = true;
+    gnResolve();
+  }
+  function gnResolve() {
+    if (!GN.running || GN.advancing) return;
+    clearTimeout(GN.timerId);
+    GN.advancing = true;
+    const isGo = GN.isGo;
+    const correct = isGo ? GN.responded : !GN.responded;
+    GN.total++;
+    if (isGo) {
+      if (GN.responded) { GN.hits++; const rt = performance.now() - GN.trialStart; GN.rtSum += rt; GN.rtCount++; }
+      else GN.omissions++;
+    } else {
+      if (GN.responded) GN.commissions++; else GN.correctRej++;
+    }
+    if (correct) { if (state_sound) beep(740, 0.07, "sine"); gnFeedback.textContent = "正确"; gnFeedback.className = "gn-feedback ok"; }
+    else { if (state_sound) beep(200, 0.12, "square", 0.05); gnFeedback.textContent = isGo ? "漏按!" : "误按!"; gnFeedback.className = "gn-feedback bad"; }
+    gnStim.classList.remove("show");
+    gnUpdateHud();
+    GN.advanceId = setTimeout(() => { GN.advanceId = null; gnFeedback.textContent = ""; gnShowTrial(GN.t + 1); }, 350);
+  }
+  function gnStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    GN.trials = clampInt($("gnTrials").value, 5, 60, 30);
+    GN.windowMs = clampInt($("gnWindow").value, 400, 1500, 800);
+    GN.goRatio = clampInt($("gnGoRatio").value, 50, 90, 75) / 100;
+    GN.hits = GN.correctRej = GN.commissions = GN.omissions = GN.rtSum = GN.rtCount = GN.total = 0;
+    GN.t = 0; GN.advancing = false; GN.responded = false;
+    GN.running = true; GN.paused = false; GN.finished = false;
+    gnStartBtn.disabled = true; gnPauseBtn.disabled = false; gnEndBtn.disabled = false; gnResumeBtn.disabled = true; gnRespBtn.disabled = false;
+    gnBuildSeq();
+    gnOverlay.classList.add("hidden");
+    gnShowTrial(0);
+  }
+  function gnPause() {
+    if (!GN.running || GN.paused) return;
+    GN.paused = true; clearTimeout(GN.timerId); clearTimeout(GN.advanceId); GN.advanceId = null;
+    gnPauseBtn.disabled = true; gnResumeBtn.disabled = false; gnRespBtn.disabled = true;
+    gnShowOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", false); if (state_sound) beep(520, 0.1, "sine");
+  }
+  function gnResume() {
+    if (!GN.running || !GN.paused) return;
+    GN.paused = false; gnOverlay.classList.add("hidden");
+    gnPauseBtn.disabled = false; gnResumeBtn.disabled = true; gnRespBtn.disabled = false;
+    gnShowTrial(GN.t);
+  }
+  function gnReset() {
+    clearTimeout(GN.timerId); clearTimeout(GN.advanceId); GN.advanceId = null;
+    GN.running = false; GN.paused = false; GN.finished = false; GN.advancing = false; GN.responded = false;
+    gnStartBtn.disabled = false; gnPauseBtn.disabled = true; gnResumeBtn.disabled = true; gnEndBtn.disabled = true; gnRespBtn.disabled = true;
+    gnStim.classList.remove("show"); gnFeedback.textContent = "";
+    gnUpdateHud();
+    gnShowOverlay("🛑", "准备开始", "看见绿色圆「GO」就按空格/点击；看见红色圆「停」就忍住别按。训练你的反应抑制。", "开始训练", true);
+  }
+  function gnEnd() { if (!GN.running || GN.finished) return; gnFinish(true); }
+  function gnFinish(manual) {
+    clearTimeout(GN.timerId); clearTimeout(GN.advanceId); GN.advanceId = null;
+    GN.running = false; GN.finished = true; GN.paused = false; GN.advancing = false;
+    gnStim.classList.remove("show");
+    gnStartBtn.disabled = false; gnPauseBtn.disabled = true; gnResumeBtn.disabled = true; gnEndBtn.disabled = true; gnRespBtn.disabled = true;
+    const correct = GN.hits + GN.correctRej;
+    const acc = GN.total ? (correct / GN.total) * 100 : 0;
+    const avgRt = GN.rtCount ? Math.round(GN.rtSum / GN.rtCount) : 0;
+    const success = !manual && GN.total >= GN.trials;
+    saveRecord({ game: "gonogo", trials: GN.trials, windowMs: GN.windowMs, goRatio: Math.round(GN.goRatio * 100), success, metric: Math.round(acc), unit: "%", metricLabel: "正确率", betterIsLower: false, rtAvg: avgRt, hits: GN.hits, correctRej: GN.correctRej, commissions: GN.commissions, omissions: GN.omissions, date: Date.now() });
+    const emoji = success ? "🎉" : "🏁";
+    const title = success ? "本轮完成！" : "已结束本轮";
+    const desc = `正确率 ${Math.round(acc)}% · 平均反应 ${avgRt}ms（命中 ${GN.hits} · 正确抑制 ${GN.correctRej} · 误按 ${GN.commissions} · 漏按 ${GN.omissions}）`;
+    gnShowOverlay(emoji, title, desc, "再来一局", true);
+  }
+  function gnShowOverlay(emoji, title, desc, btnText, startAction) {
+    gnOe.textContent = emoji; gnot.textContent = title; gnod.textContent = desc; gnos.textContent = btnText;
+    gnos.dataset.action = startAction ? "start" : "resume"; gnOverlay.classList.remove("hidden");
+  }
+  gnos.addEventListener("click", () => { if (gnos.dataset.action === "start") gnStart(); else gnResume(); });
+  gnStim.addEventListener("click", gnRespond);
+  gnRespBtn.addEventListener("click", gnRespond);
+  gnStartBtn.addEventListener("click", gnStart);
+  gnPauseBtn.addEventListener("click", gnPause);
+  gnResumeBtn.addEventListener("click", gnResume);
+  gnEndBtn.addEventListener("click", gnEnd);
+  gnResetBtn.addEventListener("click", gnReset);
+  $("gnTrials").addEventListener("change", (e) => { GN.trials = clampInt(e.target.value, 5, 60, 30); gnUpdateHud(); });
+  $("gnWindow").addEventListener("change", (e) => { GN.windowMs = clampInt(e.target.value, 400, 1500, 800); });
+  $("gnGoRatio").addEventListener("change", (e) => { GN.goRatio = clampInt(e.target.value, 50, 90, 75) / 100; });
+  function gnIdle() { gnReset(); }
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -784,6 +934,9 @@
       if (e.key >= "1" && e.key <= "4") { e.preventDefault(); spRespond(parseInt(e.key, 10) - 1); }
       else if (e.code === "Space") { e.preventDefault(); if (!SP.running) spStart(); else if (SP.paused) spResume(); else spEnd(); }
       else if (e.key.toLowerCase() === "r") spReset();
+    } else if (currentGame === "gonogo") {
+      if (e.code === "Space") { e.preventDefault(); if (!GN.running) gnStart(); else if (GN.paused) gnResume(); else gnRespond(); }
+      else if (e.key.toLowerCase() === "r") gnReset();
     }
   });
 
