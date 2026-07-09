@@ -484,6 +484,36 @@ body {
 .gn-resp { min-width: 170px; background: linear-gradient(135deg, var(--good), #2bb37e); border-color: transparent; color: #fff; }
 .gn-resp:disabled { opacity: 0.4; }
 
+/* ===== Flanker 选择性注意专属 ===== */
+.flanker-wrap { flex-direction: column; gap: 12px; min-height: 300px; }
+.fl-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(4px, 1.2vw, 14px);
+  font-size: clamp(40px, 12vw, 96px); font-weight: 800; line-height: 1;
+  user-select: none; -webkit-user-select: none;
+  min-height: 1.2em;
+}
+.fl-arrow { display: inline-block; transition: transform 0.12s, color 0.18s, opacity 0.18s; color: var(--text); }
+.fl-arrow.target { color: var(--accent); text-shadow: 0 0 18px rgba(108, 140, 255, 0.5); }
+.fl-arrow.neutral { color: var(--text-dim); }
+.fl-row.fl-correct .fl-arrow { animation: flPop 0.3s ease; color: var(--good); }
+.fl-row.fl-wrong .fl-arrow { animation: flShake 0.3s ease; color: var(--bad); }
+@keyframes flPop { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes flShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-9px); } 75% { transform: translateX(9px); } }
+.fl-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 460px; width: 100%; margin: 0 auto; }
+.fl-dir-btn {
+  position: relative; border: 1px solid var(--panel-border); border-radius: 14px;
+  padding: 18px 8px; font-size: clamp(20px, 3vw, 28px); font-weight: 800; color: var(--text);
+  background: var(--cell-bg); cursor: pointer; transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
+  font-family: var(--font);
+}
+.fl-dir-btn:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--accent); }
+.fl-dir-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+.fl-dir-btn kbd { position: absolute; top: 6px; right: 8px; font-size: 11px; opacity: 0.8; font-family: var(--font); background: rgba(255, 255, 255, 0.15); border-radius: 5px; padding: 1px 6px; }
+.fl-dir-btn.lit-ok { box-shadow: 0 0 0 3px var(--good), 0 0 22px rgba(54, 211, 153, 0.6); transform: translateY(-2px); }
+.fl-dir-btn.lit-bad { box-shadow: 0 0 0 3px var(--bad), 0 0 22px rgba(255, 107, 129, 0.6); transform: translateY(-2px); }
+@media (max-width: 560px) { .fl-buttons { grid-template-columns: 1fr 1fr; } }
+
 /* ===== 历史记录 ===== */
 .history-head { display: flex; align-items: center; justify-content: space-between; }
 .history-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 9px; margin-bottom: 14px; }

@@ -38,6 +38,11 @@
       desc: "看见 GO 就反应、看见停就忍住，训练对优势反应的运动抑制。",
       settings: "gonogoSettings", stage: "gonogoStage", reset: gnReset, idle: gnReset,
     },
+    {
+      id: "flanker", name: "Flanker 任务", domain: "注意", domainLabel: "选择性注意", icon: "↔",
+      desc: "只看中间箭头的朝向、忽略两侧干扰箭头，训练抗干扰的集中注意能力。",
+      settings: "flankerSettings", stage: "flankerStage", reset: flReset, idle: flReset,
+    },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 
@@ -132,6 +137,7 @@
       const nb = all.filter((r) => r.game === "nback").length;
       const sp = all.filter((r) => r.game === "stroop").length;
       const gn = all.filter((r) => r.game === "gonogo").length;
+      const fl = all.filter((r) => r.game === "flanker").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
@@ -140,6 +146,7 @@
         <div class="stat"><div class="v">${nb}</div><div class="l">N-Back</div></div>
         <div class="stat"><div class="v">${sp}</div><div class="l">Stroop</div></div>
         <div class="stat"><div class="v">${gn}</div><div class="l">Go/No-Go</div></div>
+        <div class="stat"><div class="v">${fl}</div><div class="l">Flanker</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -160,7 +167,7 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : "Go/No-Go"));
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : "Flanker")));
       const resTxt = r.success
         ? (r.game === "nback" ? "达标" : "完成")
         : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
@@ -181,15 +188,21 @@
         const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
         tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
         meta = `${r.trials} 试次·${limitLabel}`;
-      } else {
+      } else if (r.game === "gonogo") {
         const winLabel = r.windowMs ? `${r.windowMs}ms窗口` : "";
         const goLabel = r.goRatio ? `GO${r.goRatio}%` : "";
         tag2 = `<span class="mode-badge timer">反应抑制</span>`;
         meta = `${r.trials} 试次·${winLabel}${goLabel ? "·" + goLabel : ""}`;
+      } else {
+        const congLabel = { mixed: "混合", incongruent: "仅不一致", congruent: "仅一致", neutral: "中性" }[r.congruency] || "混合";
+        const arrowLabel = `${r.flankerN * 2 + 1} 箭头`;
+        const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
+        tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
+        meta = `${r.trials} 试次·${arrowLabel}·${limitLabel}`;
       }
       const d = new Date(r.date);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const rtExtra = ((r.game === "stroop" || r.game === "gonogo") && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
+      const rtExtra = ((r.game === "stroop" || r.game === "gonogo" || r.game === "flanker") && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
       li.innerHTML = `
         <div class="row1">
           <span><span class="game-badge">${gameBadge}</span>${tag2}&nbsp;${meta}</span>
@@ -916,6 +929,146 @@
   $("gnGoRatio").addEventListener("change", (e) => { GN.goRatio = clampInt(e.target.value, 50, 90, 75) / 100; });
   function gnIdle() { gnReset(); }
 
+  // ============================================================
+  //  模式五：Flanker 任务（选择性注意 / 抗干扰聚焦）
+  // ============================================================
+  const FL_ARROWS = { left: "←", right: "→", neutral: "▢" };
+  const FL = {
+    running: false, paused: false, finished: false, advancing: false,
+    trials: 30, flankerN: 2, congruency: "mixed", perLimit: 0,
+    t: 0, dir: 1, type: "congruent", trialStart: 0,
+    correct: 0, total: 0, rtSum: 0, rtCount: 0,
+    timerId: null, advanceId: null,
+  };
+  const flRow = $("flRow");
+  const flTrial = $("flTrialVal"), flAcc = $("flAccVal"), flRt = $("flRtVal");
+  const flOverlay = $("flOverlay"), flOe = $("flOverlayEmoji"), flot = $("flOverlayTitle"), flod = $("flOverlayDesc"), flos = $("flOverlayStart");
+  const flStartBtn = $("flStartBtn"), flPauseBtn = $("flPauseBtn"), flResumeBtn = $("flResumeBtn"), flEndBtn = $("flEndBtn"), flResetBtn = $("flResetBtn");
+  const flBtns = Array.from(document.querySelectorAll(".fl-dir-btn"));
+
+  function flPickTrial() {
+    const dir = Math.random() < 0.5 ? -1 : 1; // -1 左, 1 右
+    let type;
+    if (FL.congruency === "congruent") type = "congruent";
+    else if (FL.congruency === "incongruent") type = "incongruent";
+    else if (FL.congruency === "neutral") type = "neutral";
+    else type = ["congruent", "incongruent", "neutral"][Math.floor(Math.random() * 3)];
+    return { dir, type };
+  }
+  function flUpdateHud() {
+    const shown = (FL.running || FL.finished) ? Math.min(FL.t + 1, FL.trials) : 0;
+    flTrial.textContent = `${shown}/${FL.trials}`;
+    flAcc.textContent = FL.total ? Math.round((FL.correct / FL.total) * 100) + "%" : "—";
+    flRt.textContent = FL.rtCount ? Math.round(FL.rtSum / FL.rtCount) + "ms" : "—";
+  }
+  function flShowTrial(t) {
+    if (t >= FL.trials) { flFinish(false); return; }
+    FL.t = t; FL.advancing = false;
+    const { dir, type } = flPickTrial();
+    FL.dir = dir; FL.type = type;
+    FL.trialStart = performance.now();
+    const n = FL.flankerN, mid = n;
+    const chars = [];
+    for (let i = 0; i < 2 * n + 1; i++) {
+      const isMid = i === mid;
+      let ch, cls = "fl-arrow";
+      if (isMid) { ch = dir === 1 ? FL_ARROWS.right : FL_ARROWS.left; cls += " target"; }
+      else if (type === "neutral") { ch = FL_ARROWS.neutral; cls += " neutral"; }
+      else if (type === "congruent") { ch = dir === 1 ? FL_ARROWS.right : FL_ARROWS.left; }
+      else { ch = dir === 1 ? FL_ARROWS.left : FL_ARROWS.right; } // 不一致：两侧与中间反向
+      chars.push(`<span class="${cls}">${ch}</span>`);
+    }
+    flRow.innerHTML = chars.join("");
+    flRow.classList.remove("fl-correct", "fl-wrong");
+    flBtns.forEach((b) => (b.disabled = false));
+    flUpdateHud();
+    if (FL.perLimit > 0) FL.timerId = setTimeout(() => flRespond(0), FL.perLimit);
+  }
+  function flRespond(choice) {
+    if (!FL.running || FL.paused || FL.advancing) return;
+    clearTimeout(FL.timerId);
+    FL.advancing = true;
+    const correct = choice === FL.dir;
+    const rt = performance.now() - FL.trialStart;
+    FL.total++;
+    if (correct) { FL.correct++; FL.rtSum += rt; FL.rtCount++; if (state_sound) beep(740, 0.07, "sine"); }
+    else { if (state_sound) beep(200, 0.12, "square", 0.05); }
+    flRow.classList.add(correct ? "fl-correct" : "fl-wrong");
+    if (choice !== 0) { const b = flBtns.find((x) => parseInt(x.dataset.dir, 10) === choice); if (b) { b.classList.add(correct ? "lit-ok" : "lit-bad"); setTimeout(() => b.classList.remove("lit-ok", "lit-bad"), 300); } }
+    flUpdateHud();
+    flBtns.forEach((b) => (b.disabled = true));
+    FL.advanceId = setTimeout(() => { FL.advanceId = null; flRow.classList.remove("fl-correct", "fl-wrong"); flShowTrial(FL.t + 1); }, 300);
+  }
+  function flStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    FL.trials = clampInt($("flTrials").value, 5, 60, 30);
+    const nBtn = $("flFlankerSeg").querySelector(".seg-btn.active");
+    FL.flankerN = nBtn ? parseInt(nBtn.dataset.n, 10) : 2;
+    const congBtn = $("flCongSeg").querySelector(".seg-btn.active");
+    FL.congruency = (congBtn && congBtn.dataset.cong) || "mixed";
+    FL.perLimit = clampInt($("flPerLimit").value, 0, 5000, 0);
+    FL.correct = FL.total = FL.rtSum = FL.rtCount = 0; FL.t = 0; FL.advancing = false;
+    FL.running = true; FL.paused = false; FL.finished = false;
+    flStartBtn.disabled = true; flPauseBtn.disabled = false; flEndBtn.disabled = false; flResumeBtn.disabled = true;
+    flOverlay.classList.add("hidden");
+    flShowTrial(0);
+  }
+  function flPause() {
+    if (!FL.running || FL.paused) return;
+    FL.paused = true; clearTimeout(FL.timerId); clearTimeout(FL.advanceId); FL.advanceId = null;
+    flPauseBtn.disabled = true; flResumeBtn.disabled = false;
+    flBtns.forEach((b) => (b.disabled = true));
+    flShowOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", false); if (state_sound) beep(520, 0.1, "sine");
+  }
+  function flResume() {
+    if (!FL.running || !FL.paused) return;
+    FL.paused = false; flOverlay.classList.add("hidden");
+    flPauseBtn.disabled = false; flResumeBtn.disabled = true;
+    flShowTrial(FL.advancing ? FL.t + 1 : FL.t);
+  }
+  function flReset() {
+    clearTimeout(FL.timerId); clearTimeout(FL.advanceId); FL.advanceId = null;
+    FL.running = false; FL.paused = false; FL.finished = false; FL.advancing = false;
+    flStartBtn.disabled = false; flPauseBtn.disabled = true; flResumeBtn.disabled = true; flEndBtn.disabled = true;
+    flBtns.forEach((b) => { b.disabled = true; b.classList.remove("lit-ok", "lit-bad"); });
+    flRow.innerHTML = ""; flRow.classList.remove("fl-correct", "fl-wrong");
+    flUpdateHud();
+    flShowOverlay("↔", "准备开始", "只看中间「那一个」箭头的朝向，忽略两侧的干扰箭头；中间朝左按 F / 点左侧，朝右按 J / 点右侧。", "开始训练", true);
+  }
+  function flEnd() { if (!FL.running || FL.finished) return; flFinish(true); }
+  function flFinish(manual) {
+    clearTimeout(FL.timerId); clearTimeout(FL.advanceId); FL.advanceId = null;
+    FL.running = false; FL.finished = true; FL.paused = false; FL.advancing = false;
+    flStartBtn.disabled = false; flPauseBtn.disabled = true; flResumeBtn.disabled = true; flEndBtn.disabled = true;
+    flBtns.forEach((b) => (b.disabled = true));
+    const acc = FL.total ? (FL.correct / FL.total) * 100 : 0;
+    const avgRt = FL.rtCount ? Math.round(FL.rtSum / FL.rtCount) : 0;
+    const success = !manual;
+    saveRecord({ game: "flanker", trials: FL.trials, flankerN: FL.flankerN, congruency: FL.congruency, perLimit: FL.perLimit, success, metric: Math.round(acc), unit: "%", metricLabel: "正确率", betterIsLower: false, rtAvg: avgRt, date: Date.now() });
+    const emoji = success ? "🎉" : "🏁";
+    const title = success ? "本轮完成！" : "已结束本轮";
+    const desc = `正确率 ${Math.round(acc)}% · 平均反应 ${avgRt}ms（共 ${FL.total} 题）`;
+    flShowOverlay(emoji, title, desc, "再来一局", true);
+  }
+  function flShowOverlay(emoji, title, desc, btnText, startAction) {
+    flOe.textContent = emoji; flot.textContent = title; flod.textContent = desc; flos.textContent = btnText;
+    flos.dataset.action = startAction ? "start" : "resume"; flOverlay.classList.remove("hidden");
+  }
+  flos.addEventListener("click", () => { if (flos.dataset.action === "start") flStart(); else flResume(); });
+  flBtns.forEach((b) => b.addEventListener("click", () => flRespond(parseInt(b.dataset.dir, 10))));
+  flStartBtn.addEventListener("click", flStart);
+  flPauseBtn.addEventListener("click", flPause);
+  flResumeBtn.addEventListener("click", flResume);
+  flEndBtn.addEventListener("click", flEnd);
+  flResetBtn.addEventListener("click", flReset);
+  const flFlankerSeg = $("flFlankerSeg");
+  flFlankerSeg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; flFlankerSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); FL.flankerN = parseInt(btn.dataset.n, 10); });
+  const flCongSeg = $("flCongSeg");
+  flCongSeg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; flCongSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); FL.congruency = btn.dataset.cong; });
+  $("flTrials").addEventListener("change", (e) => { FL.trials = clampInt(e.target.value, 5, 60, 30); flUpdateHud(); });
+  $("flPerLimit").addEventListener("change", (e) => { FL.perLimit = clampInt(e.target.value, 0, 5000, 0); });
+  function flIdle() { flReset(); }
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -937,6 +1090,11 @@
     } else if (currentGame === "gonogo") {
       if (e.code === "Space") { e.preventDefault(); if (!GN.running) gnStart(); else if (GN.paused) gnResume(); else gnRespond(); }
       else if (e.key.toLowerCase() === "r") gnReset();
+    } else if (currentGame === "flanker") {
+      if (e.key.toLowerCase() === "f") flRespond(-1);
+      else if (e.key.toLowerCase() === "j") flRespond(1);
+      else if (e.code === "Space") { e.preventDefault(); if (!FL.running) flStart(); else if (FL.paused) flResume(); else flEnd(); }
+      else if (e.key.toLowerCase() === "r") flReset();
     }
   });
 
@@ -950,6 +1108,7 @@
     S_refreshIdle();
     S_showOverlay("◧", "准备开始", S_idleDesc(), "开始训练", true);
     nbShowOverlay("◉", "准备开始", "记住 N 步之前出现过的「位置」与「声音」，出现相同就按下对应匹配键（F / J）。", "开始训练", true);
+    flReset();
   }
   init();
 })();
