@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f1226" />
+  <title>前额叶训练中心 · Prefrontal Trainer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+
+  <div class="app">
+    <!-- ===== 顶部标题 + 游戏切换 ===== -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◧</span>
+        <div class="brand-text">
+          <h1>前额叶训练中心</h1>
+          <p>专注力 · 工作记忆 · 执行功能</p>
+        </div>
+      </div>
+      <button id="themeBtn" class="icon-btn" title="切换主题" aria-label="切换主题">◐</button>
+    </header>
+
+    <div class="game-tabs" id="gameTabs">
+      <button class="game-tab active" data-game="schulte">
+        <span class="gt-icon">▦</span>
+        <span class="gt-text">舒尔特方格<small>视觉搜索</small></span>
+      </button>
+      <button class="game-tab" data-game="nback">
+        <span class="gt-icon">◉</span>
+        <span class="gt-text">Dual N-Back<small>工作记忆</small></span>
+      </button>
+    </div>
+
+    <main class="layout">
+      <!-- ===== 左侧：设置面板 ===== -->
+      <aside class="panel settings" id="settingsPanel">
+        <h2 class="panel-title">训练设置</h2>
+
+        <!-- ===== 舒尔特设置 ===== -->
+        <div id="schulteSettings">
+          <section class="field">
+            <label class="field-label">方格规模</label>
+            <div class="seg" id="sizeSeg">
+              <button class="seg-btn active" data-size="5">25 (5×5)</button>
+              <button class="seg-btn" data-size="6">36 (6×6)</button>
+              <button class="seg-btn" data-size="7">49 (7×7)</button>
+              <button class="seg-btn" data-size="custom">自定义</button>
+            </div>
+            <div class="custom-size hidden" id="customSizeWrap">
+              <input type="number" id="customSize" min="2" max="15" value="8" />
+              <span class="hint">阶数 2–15（格数 = 阶数²）</span>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="field-label">训练模式</label>
+            <div class="seg" id="modeSeg">
+              <button class="seg-btn active" data-mode="count">计时模式</button>
+              <button class="seg-btn" data-mode="timer">定时模式</button>
+            </div>
+            <div class="custom-size hidden" id="timerWrap">
+              <input type="number" id="timeLimit" min="5" max="600" value="60" />
+              <span class="hint">秒（规定时间内完成）</span>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="field-label">图形布局</label>
+            <div class="seg" id="layoutSeg">
+              <button class="seg-btn active" data-layout="grid">方形</button>
+              <button class="seg-btn" data-layout="circle">圆形</button>
+              <button class="seg-btn" data-layout="triangle">三角形</button>
+              <button class="seg-btn" data-layout="nested">多层嵌套</button>
+              <button class="seg-btn" data-layout="hexagon">蜂巢</button>
+              <button class="seg-btn" data-layout="radial">圆盘</button>
+              <button class="seg-btn" data-layout="irregular">变式</button>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="field-label">排序模式</label>
+            <div class="seg" id="orderSeg">
+              <button class="seg-btn active" data-order="asc">正序 ↑</button>
+              <button class="seg-btn" data-order="desc">倒序 ↓</button>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="field-label">干扰模式 <span class="tag">可叠加</span></label>
+            <div class="checks">
+              <label class="check"><input type="checkbox" id="interfColor" /><span class="check-box"></span><span class="check-text">颜色干扰<small>数字随机配色</small></span></label>
+              <label class="check"><input type="checkbox" id="interfFont" /><span class="check-box"></span><span class="check-text">字体干扰<small>随机字体形态</small></span></label>
+              <label class="check"><input type="checkbox" id="interfJitter" /><span class="check-box"></span><span class="check-text">抖动干扰<small>格子周期抖动</small></span></label>
+              <label class="check"><input type="checkbox" id="interfMirror" /><span class="check-box"></span><span class="check-text">镜像干扰<small>部分数字翻转</small></span></label>
+              <label class="check"><input type="checkbox" id="interfZoneColor" /><span class="check-box"></span><span class="check-text">色块分区<small>按区域区分背景色</small></span></label>
+              <label class="check"><input type="checkbox" id="interfRotation" /><span class="check-box"></span><span class="check-text">旋转干扰<small>面板整体缓慢旋转</small></span></label>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="check"><input type="checkbox" id="rangeOffset" /><span class="check-box"></span><span class="check-text">数字偏移<small>目标从指定数字开始</small></span></label>
+            <div class="custom-size hidden" id="rangeStartWrap">
+              <input type="number" id="rangeStart" min="1" max="999" value="26" />
+              <span class="hint">起始数字（如 26 表示从 26 开始）</span>
+            </div>
+          </section>
+        </div>
+
+        <!-- ===== N-Back 设置 ===== -->
+        <div id="nbackSettings" class="hidden">
+          <section class="field">
+            <label class="field-label">N 等级</label>
+            <select id="nbLevel" class="select">
+              <option value="1">N = 1</option>
+              <option value="2" selected>N = 2</option>
+              <option value="3">N = 3</option>
+              <option value="4">N = 4</option>
+              <option value="5">N = 5</option>
+              <option value="6">N = 6</option>
+            </select>
+            <span class="hint">需记住 N 步之前的刺激</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">刺激通道</label>
+            <div class="seg" id="nbChannelSeg">
+              <button class="seg-btn active" data-channel="dual">双通道</button>
+              <button class="seg-btn" data-channel="visual">仅视觉</button>
+              <button class="seg-btn" data-channel="audio">仅听觉</button>
+            </div>
+            <span class="hint">双通道同时训练位置与声音记忆</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">每轮试次数</label>
+            <select id="nbTrials" class="select">
+              <option value="15">15 次</option>
+              <option value="20" selected>20 次</option>
+              <option value="30">30 次</option>
+              <option value="40">40 次</option>
+            </select>
+          </section>
+
+          <section class="field">
+            <label class="field-label">刺激间隔</label>
+            <select id="nbInterval" class="select">
+              <option value="2000">2.0 秒</option>
+              <option value="2500" selected>2.5 秒</option>
+              <option value="3000">3.0 秒</option>
+            </select>
+            <span class="hint">间隔越短难度越高</span>
+          </section>
+
+          <section class="field">
+            <label class="check"><input type="checkbox" id="nbAdapt" checked /><span class="check-box"></span><span class="check-text">自动调节难度<small>正确率高则升 N，低则降 N</small></span></label>
+          </section>
+        </div>
+
+        <section class="field">
+          <label class="check"><input type="checkbox" id="soundOn" checked /><span class="check-box"></span><span class="check-text">音效反馈</span></label>
+        </section>
+      </aside>
+
+      <!-- ===== 中间：游戏区 ===== -->
+      <section class="stage">
+        <!-- 舒尔特舞台 -->
+        <div id="schulteStage">
+          <div class="hud">
+            <div class="hud-item">
+              <span class="hud-label">当前目标</span>
+              <span class="hud-value" id="targetNum">—</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label" id="timeLabel">用时</span>
+              <span class="hud-value" id="timeValue">0.0s</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">进度</span>
+              <span class="hud-value" id="progressValue">0 / 25</span>
+            </div>
+          </div>
+
+          <div class="board-wrap">
+            <div class="board" id="board" aria-label="舒尔特方格"></div>
+            <div class="overlay hidden" id="overlay">
+              <div class="overlay-card">
+                <div class="overlay-emoji" id="overlayEmoji">◧</div>
+                <h3 id="overlayTitle">准备开始</h3>
+                <p id="overlayDesc">点击下方「开始」按钮，按顺序点击数字 1 到 N。</p>
+                <button class="btn primary" id="overlayStart">开始训练</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <button class="btn primary" id="startBtn">开始</button>
+            <button class="btn" id="pauseBtn" disabled>暂停</button>
+            <button class="btn" id="resumeBtn" disabled>恢复</button>
+            <button class="btn" id="endBtn" disabled>结束本轮</button>
+            <button class="btn ghost" id="resetBtn">重置</button>
+          </div>
+        </div>
+
+        <!-- N-Back 舞台 -->
+        <div id="nbackStage" class="hidden">
+          <div class="hud hud-nback">
+            <div class="hud-item"><span class="hud-label">N 等级</span><span class="hud-value" id="nbLevelVal">2</span></div>
+            <div class="hud-item"><span class="hud-label">进度</span><span class="hud-value" id="nbTrialVal">0/20</span></div>
+            <div class="hud-item"><span class="hud-label">位置正确率</span><span class="hud-value" id="nbPosAccVal">—</span></div>
+            <div class="hud-item"><span class="hud-label">声音正确率</span><span class="hud-value" id="nbAudAccVal">—</span></div>
+          </div>
+
+          <div class="board-wrap nback-wrap">
+            <div class="nback-grid" id="nbackGrid" aria-label="N-Back 视觉网格"></div>
+            <div class="nb-audio-cue" id="nbAudioCue">🔊</div>
+            <div class="overlay hidden" id="nbOverlay">
+              <div class="overlay-card">
+                <div class="overlay-emoji" id="nbOverlayEmoji">◉</div>
+                <h3 id="nbOverlayTitle">准备开始</h3>
+                <p id="nbOverlayDesc">记住 N 步之前出现过的「位置」与「声音」，出现相同就按下对应匹配键。</p>
+                <button class="btn primary" id="nbOverlayStart">开始训练</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="nb-legend">
+            <span><b>F</b> / 左键 = 位置匹配</span>
+            <span><b>J</b> / 右键 = 声音匹配</span>
+          </div>
+
+          <div class="controls">
+            <button class="btn primary" id="nbStartBtn">开始</button>
+            <button class="btn" id="nbPauseBtn" disabled>暂停</button>
+            <button class="btn" id="nbResumeBtn" disabled>恢复</button>
+            <button class="btn" id="nbEndBtn" disabled>结束本轮</button>
+            <button class="btn ghost" id="nbResetBtn">重置</button>
+          </div>
+          <div class="nb-responses">
+            <button class="btn nb-resp" id="nbPosBtn" disabled>位置匹配 (F)</button>
+            <button class="btn nb-resp" id="nbAudBtn" disabled>声音匹配 (J)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 右侧：历史记录 ===== -->
+      <aside class="panel history" id="historyPanel">
+        <div class="history-head">
+          <h2 class="panel-title">历史成绩</h2>
+          <button class="icon-btn small" id="clearHistory" title="清空记录">🗑</button>
+        </div>
+        <div class="history-stats" id="historyStats"></div>
+        <div class="history-filters">
+          <select id="filterGame" class="select">
+            <option value="all">全部游戏</option>
+            <option value="schulte">舒尔特</option>
+            <option value="nback">N-Back</option>
+          </select>
+          <select id="filterLayout" class="select">
+            <option value="all">全部布局</option>
+            <option value="grid">方形</option>
+            <option value="circle">圆形</option>
+            <option value="triangle">三角形</option>
+            <option value="nested">多层嵌套</option>
+            <option value="hexagon">蜂巢</option>
+            <option value="radial">圆盘</option>
+            <option value="irregular">变式</option>
+          </select>
+          <select id="filterOrder" class="select">
+            <option value="all">全部顺序</option>
+            <option value="asc">正序</option>
+            <option value="desc">倒序</option>
+          </select>
+        </div>
+        <div class="chart-wrap">
+          <svg id="trendChart" viewBox="0 0 300 175" preserveAspectRatio="xMidYMid meet" role="img" aria-label="成绩趋势图"></svg>
+          <p class="chart-empty" id="chartEmpty">完成至少一局成功记录后显示趋势。</p>
+        </div>
+        <ul class="history-list" id="historyList"></ul>
+        <p class="empty" id="historyEmpty">暂无记录，完成一局后会出现在这里。</p>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <span>单页本地应用 · 无需联网 · 数据保存在本机浏览器</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
