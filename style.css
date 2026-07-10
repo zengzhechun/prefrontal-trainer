@@ -77,7 +77,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: clamp(14px, 2vw, 22px);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* ===== 顶部栏 ===== */
@@ -115,6 +116,8 @@ body {
   padding: 14px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  max-height: 240px;
+  overflow-y: auto;
 }
 .gl-search { margin-bottom: 12px; }
 .gl-search input {
@@ -175,7 +178,9 @@ body {
   grid-template-columns: 300px minmax(0, 1fr) 320px;
   gap: clamp(12px, 1.6vw, 20px);
   flex: 1;
-  align-items: start;
+  min-height: 0;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .panel {
@@ -186,6 +191,8 @@ body {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
+  overflow-y: auto;
+  min-height: 0;
 }
 .panel-title { font-size: 14px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 14px; }
 
@@ -252,7 +259,7 @@ body {
 .check-text small { display: block; font-size: 10px; color: var(--text-dim); font-weight: 400; }
 
 /* ===== 游戏区 ===== */
-.stage { display: flex; flex-direction: column; gap: 16px; }
+.stage { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
 
 .hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .hud-nback { grid-template-columns: repeat(4, 1fr); }
