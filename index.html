@@ -306,9 +306,43 @@
           </section>
         </div>
 
-        <section class="field">
-          <label class="check"><input type="checkbox" id="soundOn" checked /><span class="check-box"></span><span class="check-text">音效反馈</span></label>
-        </section>
+          <section class="field">
+            <label class="check"><input type="checkbox" id="soundOn" checked /><span class="check-box"></span><span class="check-text">音效反馈</span></label>
+          </section>
+        </div>
+
+        <!-- ===== 任务切换设置 ===== -->
+        <div id="taskSettings" class="hidden">
+          <section class="field">
+            <label class="field-label">试次数量</label>
+            <select id="tsTrials" class="select">
+              <option value="20">20 题</option>
+              <option value="30" selected>30 题</option>
+              <option value="40">40 题</option>
+              <option value="50">50 题</option>
+            </select>
+          </section>
+
+          <section class="field">
+            <label class="field-label">规则切换方式</label>
+            <div class="seg" id="tsModeSeg">
+              <button class="seg-btn active" data-mode="mixed">随机</button>
+              <button class="seg-btn" data-mode="block">区块</button>
+              <button class="seg-btn" data-mode="switch">多数切换</button>
+            </div>
+            <span class="hint">区块＝连续若干题用同一规则；多数切换＝每题更易换规则，切换代价更明显</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">每题时限</label>
+            <select id="tsPerLimit" class="select">
+              <option value="0" selected>不限时</option>
+              <option value="1500">1.5 秒</option>
+              <option value="1000">1 秒</option>
+            </select>
+            <span class="hint">超时记为错误并自动跳到下一题</span>
+          </section>
+        </div>
       </aside>
 
       <!-- ===== 中间：游戏区 ===== -->
@@ -543,6 +577,42 @@
             <button class="btn ghost" id="dsResetBtn">重置</button>
           </div>
         </div>
+
+        <!-- 任务切换 舞台 -->
+        <div id="taskStage" class="hidden">
+          <div class="hud hud-stroop">
+            <div class="hud-item"><span class="hud-label">进度</span><span class="hud-value" id="tsTrialVal">0/30</span></div>
+            <div class="hud-item"><span class="hud-label">正确率</span><span class="hud-value" id="tsAccVal">—</span></div>
+            <div class="hud-item"><span class="hud-label">平均反应</span><span class="hud-value" id="tsRtVal">—</span></div>
+          </div>
+
+          <div class="board-wrap task-wrap">
+            <div class="ts-rule" id="tsRule">规则</div>
+            <div class="ts-stim" id="tsStim">5</div>
+            <div class="ts-feedback" id="tsFeedback"></div>
+            <div class="overlay hidden" id="tsOverlay">
+              <div class="overlay-card">
+                <div class="overlay-emoji" id="tsOverlayEmoji">🔄</div>
+                <h3 id="tsOverlayTitle">准备开始</h3>
+                <p id="tsOverlayDesc">看清上方「当前规则」，对中间的数字做出判断并选左/右。规则会变化，注意在任务间快速切换。</p>
+                <button class="btn primary" id="tsOverlayStart">开始训练</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ts-buttons" id="tsButtons">
+            <button class="ts-dir-btn" data-dir="-1">← 左<kbd>F</kbd></button>
+            <button class="ts-dir-btn" data-dir="1">右 →<kbd>J</kbd></button>
+          </div>
+
+          <div class="controls">
+            <button class="btn primary" id="tsStartBtn">开始</button>
+            <button class="btn" id="tsPauseBtn" disabled>暂停</button>
+            <button class="btn" id="tsResumeBtn" disabled>恢复</button>
+            <button class="btn" id="tsEndBtn" disabled>结束本轮</button>
+            <button class="btn ghost" id="tsResetBtn">重置</button>
+          </div>
+        </div>
       </section>
 
       <!-- ===== 右侧：历史记录 ===== -->
@@ -561,6 +631,7 @@
               <option value="gonogo">Go/No-Go</option>
               <option value="flanker">Flanker</option>
               <option value="digitspan">数字广度</option>
+              <option value="task">任务切换</option>
             </select>
           <select id="filterLayout" class="select">
             <option value="all">全部布局</option>

@@ -48,6 +48,11 @@
       desc: "记住并复述依次闪现的数字（顺背或反背），训练短时记忆的容量与复述能力。",
       settings: "digitspanSettings", stage: "digitspanStage", reset: dsReset, idle: dsReset,
     },
+    {
+      id: "task", name: "任务切换", domain: "灵活", domainLabel: "认知灵活性", icon: "🔄",
+      desc: "按每题变化的规则对数字做判断，训练在不同任务间快速切换的认知灵活性。",
+      settings: "taskSettings", stage: "taskStage", reset: tsReset, idle: tsReset,
+    },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 
@@ -144,6 +149,7 @@
       const gn = all.filter((r) => r.game === "gonogo").length;
       const fl = all.filter((r) => r.game === "flanker").length;
       const dsp = all.filter((r) => r.game === "digitspan").length;
+      const ts = all.filter((r) => r.game === "task").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
@@ -154,6 +160,7 @@
         <div class="stat"><div class="v">${gn}</div><div class="l">Go/No-Go</div></div>
         <div class="stat"><div class="v">${fl}</div><div class="l">Flanker</div></div>
         <div class="stat"><div class="v">${dsp}</div><div class="l">数字广度</div></div>
+        <div class="stat"><div class="v">${ts}</div><div class="l">任务切换</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -174,7 +181,7 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : (r.game === "flanker" ? "Flanker" : "数字广度"))));
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : (r.game === "flanker" ? "Flanker" : (r.game === "digitspan" ? "数字广度" : "任务切换")))));
       const resTxt = r.success
         ? (r.game === "nback" ? "达标" : "完成")
         : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
@@ -206,6 +213,11 @@
         const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
         tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
         meta = `${r.trials} 试次·${arrowLabel}·${limitLabel}`;
+      } else if (r.game === "task") {
+        const modeLabel = { mixed: "随机", block: "区块", switch: "多数切换" }[r.seqMode] || "随机";
+        const costLabel = (typeof r.switchCost === "number") ? `切换+${r.switchCost}ms` : "";
+        tag2 = `<span class="mode-badge timer">${modeLabel}</span>`;
+        meta = `${r.trials} 试次${costLabel ? "·" + costLabel : ""}`;
       } else {
         const modeLabel = { forward: "顺背", backward: "反背", mixed: "混合" }[r.mode] || "顺背";
         const best = r.metric ? `${r.metric} 位` : "0 位";
@@ -214,7 +226,8 @@
       }
       const d = new Date(r.date);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const rtExtra = ((r.game === "stroop" || r.game === "gonogo" || r.game === "flanker") && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
+      let rtExtra = ((r.game === "stroop" || r.game === "gonogo" || r.game === "flanker" || r.game === "task") && r.rtAvg) ? `<span>RT ${r.rtAvg}ms</span>` : "";
+      if (r.game === "task" && typeof r.switchCost === "number") rtExtra += `<span>切换代价 ${r.switchCost}ms</span>`;
       li.innerHTML = `
         <div class="row1">
           <span><span class="game-badge">${gameBadge}</span>${tag2}&nbsp;${meta}</span>
@@ -1237,6 +1250,167 @@
   $("dsDigitMs").addEventListener("change", (e) => { DS.digitMs = clampInt(e.target.value, 400, 1500, 800); });
   function dsIdle() { dsReset(); }
 
+  // ============================================================
+  //  模式七：任务切换 Task Switching（认知灵活性）
+  //  每题给出「当前规则」，对中间数字做判断并选左/右；规则会变，
+  //  在任务间快速切换时反应变慢（切换代价 = 切换试次平均 RT − 重复试次平均 RT）。
+  // ============================================================
+  const TS_RULE_LABEL = { parity: "奇偶规则", magnitude: "大小规则" };
+  const TS_NUMS = [1, 2, 3, 4, 6, 7, 8, 9]; // 排除 5（大小分界点的歧义）
+  const TS = {
+    running: false, paused: false, finished: false, advancing: false,
+    trials: 30, seqMode: "mixed", perLimit: 0,
+    t: 0, rule: "parity", prevRule: null, isSwitch: false, num: 1, trialStart: 0,
+    rules: [], nums: [],
+    correct: 0, total: 0, rtSum: 0, rtCount: 0, switchRts: [], repeatRts: [],
+    timerId: null, advanceId: null,
+  };
+  const tsStim = $("tsStim"), tsRule = $("tsRule"), tsFeedback = $("tsFeedback");
+  const tsTrial = $("tsTrialVal"), tsAcc = $("tsAccVal"), tsRt = $("tsRtVal");
+  const tsOverlay = $("tsOverlay"), tsOe = $("tsOverlayEmoji"), tsot = $("tsOverlayTitle"), tsod = $("tsOverlayDesc"), tsos = $("tsOverlayStart");
+  const tsStartBtn = $("tsStartBtn"), tsPauseBtn = $("tsPauseBtn"), tsResumeBtn = $("tsResumeBtn"), tsEndBtn = $("tsEndBtn"), tsResetBtn = $("tsResetBtn");
+  const tsBtns = Array.from(document.querySelectorAll(".ts-dir-btn"));
+
+  function tsBuildRules(n, mode) {
+    const rules = [];
+    if (mode === "block") {
+      let cur = Math.random() < 0.5 ? "parity" : "magnitude";
+      const sizes = []; let rem = n;
+      while (rem > 0) { const b = Math.min(rem, 4 + Math.floor(Math.random() * 3)); sizes.push(b); rem -= b; }
+      for (const b of sizes) { for (let i = 0; i < b; i++) rules.push(cur); cur = cur === "parity" ? "magnitude" : "parity"; }
+    } else if (mode === "switch") {
+      let cur = Math.random() < 0.5 ? "parity" : "magnitude";
+      rules.push(cur);
+      for (let i = 1; i < n; i++) { if (Math.random() < 0.75) cur = cur === "parity" ? "magnitude" : "parity"; rules.push(cur); }
+    } else {
+      let cur = Math.random() < 0.5 ? "parity" : "magnitude";
+      for (let i = 0; i < n; i++) { if (i > 0 && Math.random() < 0.5) cur = cur === "parity" ? "magnitude" : "parity"; rules.push(cur); }
+    }
+    return rules;
+  }
+  function tsExpectedDir(rule, num) {
+    return rule === "parity" ? (num % 2 === 0 ? -1 : 1) : (num <= 4 ? -1 : 1);
+  }
+  function tsUpdateHud() {
+    const shown = (TS.running || TS.finished) ? Math.min(TS.t + 1, TS.trials) : 0;
+    tsTrial.textContent = `${shown}/${TS.trials}`;
+    tsAcc.textContent = TS.total ? Math.round((TS.correct / TS.total) * 100) + "%" : "—";
+    tsRt.textContent = TS.rtCount ? Math.round(TS.rtSum / TS.rtCount) + "ms" : "—";
+  }
+  function tsShowTrial(t) {
+    if (t >= TS.trials) { tsFinish(false); return; }
+    TS.t = t; TS.advancing = false;
+    const rule = TS.rules[t];
+    TS.isSwitch = t > 0 && rule !== TS.prevRule;
+    TS.prevRule = rule;
+    const num = TS.nums[t];
+    TS.rule = rule; TS.num = num;
+    TS.trialStart = performance.now();
+    tsRule.textContent = TS_RULE_LABEL[rule] + (TS.isSwitch ? "（切换！）" : "");
+    tsRule.classList.toggle("switching", TS.isSwitch);
+    tsStim.textContent = num;
+    tsStim.className = "ts-stim";
+    tsFeedback.textContent = "";
+    tsBtns.forEach((b) => (b.disabled = false));
+    tsUpdateHud();
+    if (TS.perLimit > 0) TS.timerId = setTimeout(() => tsRespond(0), TS.perLimit);
+  }
+  function tsRespond(choice) {
+    if (!TS.running || TS.paused || TS.advancing) return;
+    clearTimeout(TS.timerId);
+    TS.advancing = true;
+    const expected = tsExpectedDir(TS.rule, TS.num);
+    const correct = choice === expected;
+    const rt = performance.now() - TS.trialStart;
+    TS.total++;
+    if (correct) {
+      TS.correct++; TS.rtSum += rt; TS.rtCount++;
+      if (TS.t > 0) { if (TS.isSwitch) TS.switchRts.push(rt); else TS.repeatRts.push(rt); }
+      if (state_sound) beep(740, 0.07, "sine");
+    } else { if (state_sound) beep(200, 0.12, "square", 0.05); }
+    tsStim.classList.add(correct ? "ts-correct" : "ts-wrong");
+    if (choice !== 0) { const b = tsBtns.find((x) => parseInt(x.dataset.dir, 10) === choice); if (b) { b.classList.add(correct ? "lit-ok" : "lit-bad"); setTimeout(() => b.classList.remove("lit-ok", "lit-bad"), 300); } }
+    tsFeedback.textContent = correct ? "正确" : "错误";
+    tsFeedback.className = "ts-feedback " + (correct ? "ok" : "bad");
+    tsUpdateHud();
+    tsBtns.forEach((b) => (b.disabled = true));
+    TS.advanceId = setTimeout(() => { TS.advanceId = null; tsStim.classList.remove("ts-correct", "ts-wrong"); tsShowTrial(TS.t + 1); }, 300);
+  }
+  function tsStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    TS.trials = clampInt($("tsTrials").value, 5, 60, 30);
+    const mBtn = $("tsModeSeg").querySelector(".seg-btn.active");
+    TS.seqMode = (mBtn && mBtn.dataset.mode) || "mixed";
+    TS.perLimit = clampInt($("tsPerLimit").value, 0, 5000, 0);
+    TS.rules = tsBuildRules(TS.trials, TS.seqMode);
+    TS.nums = Array.from({ length: TS.trials }, () => TS_NUMS[Math.floor(Math.random() * TS_NUMS.length)]);
+    TS.correct = TS.total = TS.rtSum = TS.rtCount = 0;
+    TS.switchRts = []; TS.repeatRts = []; TS.prevRule = null; TS.t = 0; TS.advancing = false;
+    TS.running = true; TS.paused = false; TS.finished = false;
+    tsStartBtn.disabled = true; tsPauseBtn.disabled = false; tsEndBtn.disabled = false; tsResumeBtn.disabled = true;
+    tsOverlay.classList.add("hidden");
+    tsShowTrial(0);
+  }
+  function tsPause() {
+    if (!TS.running || TS.paused) return;
+    TS.paused = true; clearTimeout(TS.timerId); clearTimeout(TS.advanceId); TS.advanceId = null;
+    tsPauseBtn.disabled = true; tsResumeBtn.disabled = false;
+    tsBtns.forEach((b) => (b.disabled = true));
+    tsShowOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", false); if (state_sound) beep(520, 0.1, "sine");
+  }
+  function tsResume() {
+    if (!TS.running || !TS.paused) return;
+    TS.paused = false; tsOverlay.classList.add("hidden");
+    tsPauseBtn.disabled = false; tsResumeBtn.disabled = true;
+    tsShowTrial(TS.advancing ? TS.t + 1 : TS.t);
+  }
+  function tsReset() {
+    clearTimeout(TS.timerId); clearTimeout(TS.advanceId); TS.advanceId = null;
+    TS.running = false; TS.paused = false; TS.finished = false; TS.advancing = false;
+    tsStartBtn.disabled = false; tsPauseBtn.disabled = true; tsResumeBtn.disabled = true; tsEndBtn.disabled = true;
+    tsBtns.forEach((b) => { b.disabled = true; b.classList.remove("lit-ok", "lit-bad"); });
+    tsStim.textContent = "5"; tsStim.className = "ts-stim";
+    tsRule.textContent = "奇偶规则 / 大小规则"; tsRule.classList.remove("switching");
+    tsFeedback.textContent = ""; tsFeedback.className = "ts-feedback";
+    tsUpdateHud();
+    tsShowOverlay("🔄", "准备开始", "看清上方「当前规则」：奇偶＝偶数按左/奇数按右；大小＝≤4 按左/≥6 按右。规则会变，注意切换。", "开始训练", true);
+  }
+  function tsEnd() { if (!TS.running || TS.finished) return; tsFinish(true); }
+  function tsFinish(manual) {
+    clearTimeout(TS.timerId); clearTimeout(TS.advanceId); TS.advanceId = null;
+    TS.running = false; TS.finished = true; TS.paused = false; TS.advancing = false;
+    tsStartBtn.disabled = false; tsPauseBtn.disabled = true; tsResumeBtn.disabled = true; tsEndBtn.disabled = true;
+    tsBtns.forEach((b) => (b.disabled = true));
+    const acc = TS.total ? (TS.correct / TS.total) * 100 : 0;
+    const avgRt = TS.rtCount ? Math.round(TS.rtSum / TS.rtCount) : 0;
+    const sw = TS.switchRts.length ? Math.round(TS.switchRts.reduce((a, b) => a + b, 0) / TS.switchRts.length) : 0;
+    const rp = TS.repeatRts.length ? Math.round(TS.repeatRts.reduce((a, b) => a + b, 0) / TS.repeatRts.length) : 0;
+    const switchCost = (TS.switchRts.length && TS.repeatRts.length) ? (sw - rp) : 0;
+    const success = !manual;
+    saveRecord({ game: "task", trials: TS.trials, seqMode: TS.seqMode, perLimit: TS.perLimit, success, metric: Math.round(acc), unit: "%", metricLabel: "正确率", betterIsLower: false, rtAvg: avgRt, switchCost, date: Date.now() });
+    const emoji = success ? "🎉" : "🏁";
+    const title = success ? "本轮完成！" : "已结束本轮";
+    const costTxt = (TS.switchRts.length && TS.repeatRts.length) ? `（切换 ${sw}ms / 重复 ${rp}ms，切换代价 ${switchCost}ms）` : "";
+    const desc = `正确率 ${Math.round(acc)}% · 平均反应 ${avgRt}ms${costTxt}`;
+    tsShowOverlay(emoji, title, desc, "再来一局", true);
+  }
+  function tsShowOverlay(emoji, title, desc, btnText, startAction) {
+    tsOe.textContent = emoji; tsot.textContent = title; tsod.textContent = desc; tsos.textContent = btnText;
+    tsos.dataset.action = startAction ? "start" : "resume"; tsOverlay.classList.remove("hidden");
+  }
+  tsos.addEventListener("click", () => { if (tsos.dataset.action === "start") tsStart(); else tsResume(); });
+  tsBtns.forEach((b) => b.addEventListener("click", () => tsRespond(parseInt(b.dataset.dir, 10))));
+  tsStartBtn.addEventListener("click", tsStart);
+  tsPauseBtn.addEventListener("click", tsPause);
+  tsResumeBtn.addEventListener("click", tsResume);
+  tsEndBtn.addEventListener("click", tsEnd);
+  tsResetBtn.addEventListener("click", tsReset);
+  const tsModeSeg = $("tsModeSeg");
+  tsModeSeg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; tsModeSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); });
+  $("tsTrials").addEventListener("change", (e) => { TS.trials = clampInt(e.target.value, 5, 60, 30); tsUpdateHud(); });
+  $("tsPerLimit").addEventListener("change", (e) => { TS.perLimit = clampInt(e.target.value, 0, 5000, 0); });
+  function tsIdle() { tsReset(); }
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -1269,6 +1443,11 @@
       else if (e.key === "Enter") { e.preventDefault(); if (DS.input.length === DS.len) dsSubmit(); }
       else if (e.code === "Space") { e.preventDefault(); if (!DS.running) dsStart(); else dsEnd(); }
       else if (e.key.toLowerCase() === "r") dsReset();
+    } else if (currentGame === "task") {
+      if (e.key.toLowerCase() === "f" || e.key === "ArrowLeft") { e.preventDefault(); tsRespond(-1); }
+      else if (e.key.toLowerCase() === "j" || e.key === "ArrowRight") { e.preventDefault(); tsRespond(1); }
+      else if (e.code === "Space") { e.preventDefault(); if (!TS.running) tsStart(); else if (TS.paused) tsResume(); else tsEnd(); }
+      else if (e.key.toLowerCase() === "r") tsReset();
     }
   });
 
@@ -1283,6 +1462,7 @@
     S_showOverlay("◧", "准备开始", S_idleDesc(), "开始训练", true);
     nbShowOverlay("◉", "准备开始", "记住 N 步之前出现过的「位置」与「声音」，出现相同就按下对应匹配键（F / J）。", "开始训练", true);
     flReset();
+    tsReset();
   }
   init();
 })();
