@@ -43,6 +43,11 @@
       desc: "只看中间箭头的朝向、忽略两侧干扰箭头，训练抗干扰的集中注意能力。",
       settings: "flankerSettings", stage: "flankerStage", reset: flReset, idle: flReset,
     },
+    {
+      id: "digitspan", name: "数字广度", domain: "记忆", domainLabel: "短时记忆", icon: "🔢",
+      desc: "记住并复述依次闪现的数字（顺背或反背），训练短时记忆的容量与复述能力。",
+      settings: "digitspanSettings", stage: "digitspanStage", reset: dsReset, idle: dsReset,
+    },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 
@@ -116,7 +121,7 @@
   // ============================================================
   function loadRecords() { try { return JSON.parse(lsGet(STORE_KEY)) || []; } catch (e) { return []; } }
   function saveRecord(rec) { const list = loadRecords(); list.unshift(rec); if (list.length > 200) list.length = 200; lsSet(STORE_KEY, JSON.stringify(list)); renderHistory(); }
-  function fmtMetric(r) { return r.unit === "ms" ? fmtTime(r.metric) : Math.round(r.metric) + "%"; }
+  function fmtMetric(r) { if (r.unit === "ms") return fmtTime(r.metric); if (r.unit === "位") return Math.round(r.metric) + " 位"; return Math.round(r.metric) + "%"; }
 
   function renderHistory() {
     const all = loadRecords();
@@ -138,6 +143,7 @@
       const sp = all.filter((r) => r.game === "stroop").length;
       const gn = all.filter((r) => r.game === "gonogo").length;
       const fl = all.filter((r) => r.game === "flanker").length;
+      const dsp = all.filter((r) => r.game === "digitspan").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
@@ -147,6 +153,7 @@
         <div class="stat"><div class="v">${sp}</div><div class="l">Stroop</div></div>
         <div class="stat"><div class="v">${gn}</div><div class="l">Go/No-Go</div></div>
         <div class="stat"><div class="v">${fl}</div><div class="l">Flanker</div></div>
+        <div class="stat"><div class="v">${dsp}</div><div class="l">数字广度</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -167,7 +174,7 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : "Flanker")));
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : (r.game === "flanker" ? "Flanker" : "数字广度"))));
       const resTxt = r.success
         ? (r.game === "nback" ? "达标" : "完成")
         : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
@@ -193,12 +200,17 @@
         const goLabel = r.goRatio ? `GO${r.goRatio}%` : "";
         tag2 = `<span class="mode-badge timer">反应抑制</span>`;
         meta = `${r.trials} 试次·${winLabel}${goLabel ? "·" + goLabel : ""}`;
-      } else {
+      } else if (r.game === "flanker") {
         const congLabel = { mixed: "混合", incongruent: "仅不一致", congruent: "仅一致", neutral: "中性" }[r.congruency] || "混合";
         const arrowLabel = `${r.flankerN * 2 + 1} 箭头`;
         const limitLabel = r.perLimit ? `${r.perLimit / 1000}s/题` : "不限时";
         tag2 = `<span class="mode-badge timer">${congLabel}</span>`;
         meta = `${r.trials} 试次·${arrowLabel}·${limitLabel}`;
+      } else {
+        const modeLabel = { forward: "顺背", backward: "反背", mixed: "混合" }[r.mode] || "顺背";
+        const best = r.metric ? `${r.metric} 位` : "0 位";
+        tag2 = `<span class="mode-badge timer">${modeLabel}</span>`;
+        meta = `起始 ${r.startLen || "—"}·广度 ${best}`;
       }
       const d = new Date(r.date);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -242,7 +254,7 @@
     const X = (i) => padL + (n === 1 ? pw / 2 : (i / (n - 1)) * pw);
     const Y = (v) => padT + ph - ((v - minV) / (maxV - minV)) * ph;
     const fmtD = (ts) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
-    const fmtV = (v) => (unit === "ms" ? fmtTime(v) : Math.round(v) + "%");
+    const fmtV = (v) => (unit === "ms" ? fmtTime(v) : (unit === "位" ? Math.round(v) + " 位" : Math.round(v) + "%"));
     const parts = [];
     const ticks = 3;
     for (let k = 0; k <= ticks; k++) {
@@ -1069,6 +1081,162 @@
   $("flPerLimit").addEventListener("change", (e) => { FL.perLimit = clampInt(e.target.value, 0, 5000, 0); });
   function flIdle() { flReset(); }
 
+  // ============================================================
+  //  模式六：数字广度 / 反向数字记忆（短时记忆）
+  // ============================================================
+  const DS_MODE_LABEL = { forward: "顺背", backward: "反背", mixed: "混合" };
+  const DS = {
+    running: false, finished: false,
+    mode: "forward", startLen: 4, digitMs: 800, gapMs: 250,
+    len: 4, trialsAtLen: 0, correctAtLen: 0, bestLen: 0, doneSeq: 0,
+    seq: [], trialBackward: false, input: [], inputPhase: false,
+    timers: [],
+  };
+  const dsDisplay = $("dsDisplay"), dsDigit = $("dsDigit"), dsModeHint = $("dsModeHint"), dsInput = $("dsInput"), dsKeypad = $("dsKeypad");
+  const dsLenVal = $("dsLenVal"), dsTrialVal = $("dsTrialVal"), dsBestVal = $("dsBestVal");
+  const dsOverlay = $("dsOverlay"), dsOe = $("dsOverlayEmoji"), dsot = $("dsOverlayTitle"), dsod = $("dsOverlayDesc"), dsos = $("dsOverlayStart");
+  const dsStartBtn = $("dsStartBtn"), dsEndBtn = $("dsEndBtn"), dsResetBtn = $("dsResetBtn");
+
+  function dsUpdateHud() {
+    dsLenVal.textContent = (DS.running || DS.finished) ? DS.len + " 位" : "—";
+    dsTrialVal.textContent = `${DS.doneSeq} 序列`;
+    dsBestVal.textContent = DS.bestLen ? DS.bestLen + " 位" : "—";
+  }
+  function dsClearTimers() { DS.timers.forEach((id) => clearTimeout(id)); DS.timers = []; }
+  function dsGenSeq(len) {
+    const seq = [];
+    for (let i = 0; i < len; i++) {
+      let d;
+      do { d = Math.floor(Math.random() * 10); } while (i >= 2 && seq[i - 1] === d && seq[i - 2] === d); // 避免连续三个相同
+      seq.push(d);
+    }
+    return seq;
+  }
+  function dsPresent() {
+    DS.trialBackward = DS.mode === "backward" ? true : (DS.mode === "mixed" ? Math.random() < 0.5 : false);
+    DS.seq = dsGenSeq(DS.len);
+    dsModeHint.textContent = "";
+    dsInput.textContent = "";
+    dsInput.classList.remove("show");
+    dsKeypad.classList.remove("show");
+    DS.inputPhase = false;
+    let i = 0;
+    function showDigit() {
+      if (i >= DS.seq.length) { dsDigit.textContent = ""; dsDigit.classList.remove("big"); DS.timers.push(setTimeout(dsBeginInput, DS.gapMs)); return; }
+      dsDigit.textContent = DS.seq[i];
+      dsDigit.classList.add("big");
+      DS.timers.push(setTimeout(() => { dsDigit.classList.remove("big"); dsDigit.textContent = ""; i++; DS.timers.push(setTimeout(showDigit, DS.gapMs)); }, DS.digitMs));
+    }
+    showDigit();
+  }
+  function dsBeginInput() {
+    DS.inputPhase = true;
+    DS.input = [];
+    dsRenderInput();
+    dsInput.classList.add("show");
+    dsKeypad.classList.add("show");
+    dsModeHint.textContent = DS.trialBackward ? "反背：倒序输入" : "顺背：按原顺序输入";
+  }
+  function dsRenderInput() {
+    dsInput.textContent = DS.input.length ? DS.input.join(" ") : "·";
+  }
+  function dsInputDigit(d) {
+    if (!DS.running || !DS.inputPhase) return;
+    if (DS.input.length >= DS.len) return;
+    DS.input.push(d);
+    dsRenderInput();
+    if (DS.input.length === DS.len) DS.timers.push(setTimeout(dsSubmit, 250));
+  }
+  function dsInputBack() {
+    if (!DS.running || !DS.inputPhase) return;
+    DS.input.pop();
+    dsRenderInput();
+  }
+  function dsSubmit() {
+    if (!DS.running || !DS.inputPhase) return;
+    DS.inputPhase = false;
+    dsKeypad.classList.remove("show");
+    dsInput.classList.remove("show");
+    const target = DS.trialBackward ? DS.seq.slice().reverse() : DS.seq.slice();
+    const correct = DS.input.length === target.length && DS.input.every((v, idx) => v === target[idx]);
+    DS.trialsAtLen++; DS.doneSeq++;
+    if (correct) {
+      DS.correctAtLen++; DS.bestLen = Math.max(DS.bestLen, DS.len);
+      if (state_sound) beep(740, 0.07, "sine");
+      dsDigit.textContent = "✓"; dsDigit.className = "ds-digit big ok";
+    } else {
+      if (state_sound) beep(200, 0.12, "square", 0.05);
+      dsDigit.textContent = "✗"; dsDigit.className = "ds-digit big bad";
+    }
+    dsUpdateHud();
+    const advance = DS.trialsAtLen >= 2 && DS.correctAtLen >= 2;
+    const failStop = DS.trialsAtLen >= 2 && DS.correctAtLen < 2;
+    if (advance) { DS.len++; DS.trialsAtLen = 0; DS.correctAtLen = 0; }
+    DS.timers.push(setTimeout(() => {
+      dsDigit.className = "ds-digit";
+      if (failStop || DS.len > 12) dsFinish(false);
+      else dsPresent();
+    }, 700));
+  }
+  function dsStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    const modeBtn = $("dsModeSeg").querySelector(".seg-btn.active");
+    DS.mode = (modeBtn && modeBtn.dataset.mode) || "forward";
+    DS.startLen = clampInt($("dsStartLen").value, 3, 9, 4);
+    DS.digitMs = clampInt($("dsDigitMs").value, 400, 1500, 800);
+    DS.len = DS.startLen; DS.trialsAtLen = 0; DS.correctAtLen = 0; DS.bestLen = 0; DS.doneSeq = 0;
+    DS.running = true; DS.finished = false;
+    dsStartBtn.disabled = true; dsEndBtn.disabled = false; dsResetBtn.disabled = false;
+    dsOverlay.classList.add("hidden");
+    dsUpdateHud();
+    dsPresent();
+  }
+  function dsReset() {
+    dsClearTimers();
+    DS.running = false; DS.finished = false; DS.inputPhase = false;
+    dsStartBtn.disabled = false; dsEndBtn.disabled = true; dsResetBtn.disabled = false;
+    dsDigit.textContent = "准备"; dsDigit.className = "ds-digit";
+    dsModeHint.textContent = "";
+    dsInput.textContent = ""; dsInput.classList.remove("show");
+    dsKeypad.classList.remove("show");
+    dsUpdateHud();
+    dsShowOverlay("🔢", "准备开始", "记住屏幕依次闪现的数字，随后按原顺序（顺背）或倒序（反背）复述出来。序列会从短到长逐步增加难度。", "开始训练", true);
+  }
+  function dsEnd() { if (!DS.running || DS.finished) return; dsFinish(true); }
+  function dsFinish(manual) {
+    dsClearTimers();
+    DS.running = false; DS.finished = true; DS.inputPhase = false;
+    dsStartBtn.disabled = false; dsEndBtn.disabled = true; dsResetBtn.disabled = false;
+    dsDigit.className = "ds-digit";
+    const best = DS.bestLen;
+    const success = !manual;
+    saveRecord({ game: "digitspan", mode: DS.mode, startLen: DS.startLen, success, metric: best, unit: "位", metricLabel: "广度", betterIsLower: false, trials: DS.doneSeq, date: Date.now() });
+    const emoji = success ? "🎉" : "🏁";
+    const title = success ? "本轮完成！" : "已结束本轮";
+    const desc = `最大广度 ${best} 位（共 ${DS.doneSeq} 个序列 · ${DS_MODE_LABEL[DS.mode]}）`;
+    dsShowOverlay(emoji, title, desc, "再来一局", true);
+  }
+  function dsShowOverlay(emoji, title, desc, btnText, startAction) {
+    dsOe.textContent = emoji; dsot.textContent = title; dsod.textContent = desc; dsos.textContent = btnText;
+    dsos.dataset.action = startAction ? "start" : "resume"; dsOverlay.classList.remove("hidden");
+  }
+  dsos.addEventListener("click", () => { if (dsos.dataset.action === "start") dsStart(); });
+  dsKeypad.querySelectorAll(".ds-key").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (b.dataset.del) dsInputBack();
+      else if (b.dataset.ok) { if (DS.input.length === DS.len) dsSubmit(); }
+      else dsInputDigit(parseInt(b.dataset.d, 10));
+    });
+  });
+  dsStartBtn.addEventListener("click", dsStart);
+  dsEndBtn.addEventListener("click", dsEnd);
+  dsResetBtn.addEventListener("click", dsReset);
+  const dsModeSeg = $("dsModeSeg");
+  dsModeSeg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; dsModeSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); });
+  $("dsStartLen").addEventListener("change", (e) => { DS.startLen = clampInt(e.target.value, 3, 9, 4); });
+  $("dsDigitMs").addEventListener("change", (e) => { DS.digitMs = clampInt(e.target.value, 400, 1500, 800); });
+  function dsIdle() { dsReset(); }
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -1095,6 +1263,12 @@
       else if (e.key.toLowerCase() === "j" || e.key === "ArrowRight") { e.preventDefault(); flRespond(1); }
       else if (e.code === "Space") { e.preventDefault(); if (!FL.running) flStart(); else if (FL.paused) flResume(); else flEnd(); }
       else if (e.key.toLowerCase() === "r") flReset();
+    } else if (currentGame === "digitspan") {
+      if (e.key >= "0" && e.key <= "9") { e.preventDefault(); dsInputDigit(parseInt(e.key, 10)); }
+      else if (e.key === "Backspace") { e.preventDefault(); dsInputBack(); }
+      else if (e.key === "Enter") { e.preventDefault(); if (DS.input.length === DS.len) dsSubmit(); }
+      else if (e.code === "Space") { e.preventDefault(); if (!DS.running) dsStart(); else dsEnd(); }
+      else if (e.key.toLowerCase() === "r") dsReset();
     }
   });
 

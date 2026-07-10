@@ -560,6 +560,44 @@ body {
   100% { transform: translate(-50%, -50%) scale(1); }
 }
 
+/* ===== 数字广度（模式六） ===== */
+.ds-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 8px 4px; }
+.ds-mode { min-height: 20px; font-size: 14px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em; }
+.ds-display {
+  width: min(320px, 80%); aspect-ratio: 1 / 1; max-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cell-bg); border: 1px solid var(--panel-border);
+  border-radius: 22px; box-shadow: var(--shadow); overflow: hidden;
+}
+.ds-digit {
+  font-size: 96px; font-weight: 800; line-height: 1; color: var(--text);
+  font-variant-numeric: tabular-nums; user-select: none;
+  transition: transform 0.12s ease, opacity 0.12s ease; opacity: 0.45;
+}
+.ds-digit.big { transform: scale(1.12); opacity: 1; }
+.ds-digit.ok { color: var(--good); }
+.ds-digit.bad { color: var(--bad); }
+.ds-input {
+  min-height: 30px; font-size: 26px; font-weight: 700; letter-spacing: 0.35em;
+  color: var(--text); opacity: 0; transition: opacity 0.18s; font-variant-numeric: tabular-nums;
+}
+.ds-input.show { opacity: 1; }
+.ds-keypad {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  width: min(300px, 80%); opacity: 0; pointer-events: none; transition: opacity 0.18s;
+}
+.ds-keypad.show { opacity: 1; pointer-events: auto; }
+.ds-key {
+  font-family: var(--font); font-size: 22px; font-weight: 700; color: var(--text);
+  padding: 16px 0; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--panel-border); background: var(--cell-bg);
+  transition: transform 0.12s, background 0.18s, border-color 0.18s;
+}
+.ds-key:hover { background: var(--cell-bg-hover); border-color: var(--accent); }
+.ds-key:active { transform: translateY(1px) scale(0.97); }
+.ds-key.del { color: var(--warn); }
+.ds-key.ok { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
+
 /* ===== 响应式 ===== */
 @media (max-width: 1080px) {
   .layout { grid-template-columns: 1fr; }

@@ -267,6 +267,45 @@
           </section>
         </div>
 
+        <!-- ===== 数字广度设置 ===== -->
+        <div id="digitspanSettings" class="hidden">
+          <section class="field">
+            <label class="field-label">训练模式</label>
+            <div class="seg" id="dsModeSeg">
+              <button class="seg-btn active" data-mode="forward">顺背</button>
+              <button class="seg-btn" data-mode="backward">反背</button>
+              <button class="seg-btn" data-mode="mixed">混合</button>
+            </div>
+            <span class="hint">顺背＝按原序复述；反背＝倒序复述；混合＝每题随机</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">起始长度</label>
+            <select id="dsStartLen" class="select">
+              <option value="3">3 位</option>
+              <option value="4" selected>4 位</option>
+              <option value="5">5 位</option>
+              <option value="6">6 位</option>
+              <option value="7">7 位</option>
+              <option value="8">8 位</option>
+              <option value="9">9 位</option>
+            </select>
+            <span class="hint">序列从这一长度开始，答对则逐步加长</span>
+          </section>
+
+          <section class="field">
+            <label class="field-label">每数字显示时长</label>
+            <select id="dsDigitMs" class="select">
+              <option value="600">0.6 秒</option>
+              <option value="800" selected>0.8 秒</option>
+              <option value="1000">1.0 秒</option>
+              <option value="1200">1.2 秒</option>
+              <option value="1500">1.5 秒</option>
+            </select>
+            <span class="hint">停留越短，越考验编码与复述速度</span>
+          </section>
+        </div>
+
         <section class="field">
           <label class="check"><input type="checkbox" id="soundOn" checked /><span class="check-box"></span><span class="check-text">音效反馈</span></label>
         </section>
@@ -459,6 +498,51 @@
             <button class="btn ghost" id="flResetBtn">重置</button>
           </div>
         </div>
+
+        <!-- 数字广度 舞台 -->
+        <div id="digitspanStage" class="hidden">
+          <div class="hud hud-stroop">
+            <div class="hud-item"><span class="hud-label">当前长度</span><span class="hud-value" id="dsLenVal">—</span></div>
+            <div class="hud-item"><span class="hud-label">进度</span><span class="hud-value" id="dsTrialVal">0 序列</span></div>
+            <div class="hud-item"><span class="hud-label">最佳广度</span><span class="hud-value" id="dsBestVal">—</span></div>
+          </div>
+
+          <div class="board-wrap ds-wrap">
+            <div class="ds-mode" id="dsModeHint"></div>
+            <div class="ds-display" id="dsDisplay">
+              <div class="ds-digit" id="dsDigit">准备</div>
+            </div>
+            <div class="ds-input" id="dsInput"></div>
+            <div class="ds-keypad" id="dsKeypad">
+              <button class="ds-key" data-d="1">1</button>
+              <button class="ds-key" data-d="2">2</button>
+              <button class="ds-key" data-d="3">3</button>
+              <button class="ds-key" data-d="4">4</button>
+              <button class="ds-key" data-d="5">5</button>
+              <button class="ds-key" data-d="6">6</button>
+              <button class="ds-key" data-d="7">7</button>
+              <button class="ds-key" data-d="8">8</button>
+              <button class="ds-key" data-d="9">9</button>
+              <button class="ds-key del" data-del="1">⌫</button>
+              <button class="ds-key" data-d="0">0</button>
+              <button class="ds-key ok" data-ok="1">✓</button>
+            </div>
+            <div class="overlay hidden" id="dsOverlay">
+              <div class="overlay-card">
+                <div class="overlay-emoji" id="dsOverlayEmoji">🔢</div>
+                <h3 id="dsOverlayTitle">准备开始</h3>
+                <p id="dsOverlayDesc">记住屏幕依次闪现的数字，随后按原顺序（顺背）或倒序（反背）复述出来。</p>
+                <button class="btn primary" id="dsOverlayStart">开始训练</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <button class="btn primary" id="dsStartBtn">开始</button>
+            <button class="btn" id="dsEndBtn" disabled>结束本轮</button>
+            <button class="btn ghost" id="dsResetBtn">重置</button>
+          </div>
+        </div>
       </section>
 
       <!-- ===== 右侧：历史记录 ===== -->
@@ -476,6 +560,7 @@
               <option value="stroop">Stroop</option>
               <option value="gonogo">Go/No-Go</option>
               <option value="flanker">Flanker</option>
+              <option value="digitspan">数字广度</option>
             </select>
           <select id="filterLayout" class="select">
             <option value="all">全部布局</option>
