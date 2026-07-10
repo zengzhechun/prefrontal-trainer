@@ -107,7 +107,7 @@ body {
 .icon-btn.small { width: 32px; height: 32px; font-size: 14px; border-radius: 9px; }
 .icon-btn:hover { transform: translateY(-2px); background: var(--cell-bg-hover); }
 
-/* ===== 游戏库（横向流式卡片网格 + 搜索） ===== */
+/* ===== 游戏库（响应式卡片网格 + 搜索） ===== */
 .game-library {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -115,6 +115,8 @@ body {
   padding: 14px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  max-height: 300px;
+  overflow-y: auto;
 }
 .gl-search { margin-bottom: 12px; }
 .gl-search input {
@@ -133,16 +135,11 @@ body {
 .gl-search input:focus { border-color: var(--accent); }
 .gl-search input::placeholder { color: var(--text-dim); }
 .gl-cards {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scroll-snap-type: x mandatory;
 }
 .gl-card {
-  flex: 0 0 auto;
-  width: 260px;
-  scroll-snap-align: start;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto 1fr;
