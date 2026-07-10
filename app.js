@@ -338,11 +338,12 @@
   //  模式一：舒尔特方格
   // ============================================================
   const S = {
-    size: 5, mode: "count", timeLimit: 60, layout: "grid", order: "asc",
+    size: 5, mode: "count", timeLimit: 60, layout: "grid", order: "asc", motion: "none",
     rangeOffset: false, rangeStart: 26,
     interf: { color: false, font: false, jitter: false, mirror: false, zoneColor: false, rotation: false },
     running: false, paused: false, finished: false,
     numbers: [], count: 0, next: 1, step: 1, elapsed: 0, rafId: null, lastTick: 0, remain: 0,
+    floatState: [], floatCell: 0, floatLast: 0,
   };
   const Sboard = $("board");
   const Soverlay = $("overlay"), SoverlayEmoji = $("overlayEmoji"), SoverlayTitle = $("overlayTitle"), SoverlayDesc = $("overlayDesc"), SoverlayStart = $("overlayStart");
@@ -392,7 +393,21 @@
 
   let ScellEls = [];
   function S_applyLayout() {
-    const { count, coords, cell } = S_computeLayout(S.layout, S.size);
+    let count, rawCoords, cell;
+    if (S.motion === "float") {
+      count = S.size * S.size;
+      cell = Math.max(10, 64 / Math.sqrt(count));
+      rawCoords = Array.from({ length: count }, () => ({
+        x: rnd(14, 86), y: rnd(14, 86),
+        vx: rnd(6, 13) * (Math.random() < 0.5 ? -1 : 1),
+        vy: rnd(6, 13) * (Math.random() < 0.5 ? -1 : 1),
+      }));
+      S.floatCell = cell;
+      S.floatState = rawCoords.map((c) => ({ x: c.x, y: c.y, vx: c.vx, vy: c.vy }));
+    } else {
+      const lay = S_computeLayout(S.layout, S.size);
+      count = lay.count; cell = lay.cell; rawCoords = lay.coords;
+    }
     while (ScellEls.length < count) {
       const el = document.createElement("div"); el.className = "cell";
       const span = document.createElement("span"); span.className = "num"; el.appendChild(span);
@@ -403,18 +418,19 @@
     for (let i = 0; i < count; i++) {
       const el = ScellEls[i]; const num = S.numbers[i];
       el.dataset.num = num; el.querySelector(".num").textContent = num;
-      const p = coords[i];
+      const p = rawCoords[i];
       el.style.left = p.x + "%"; el.style.top = p.y + "%"; el.style.width = cell + "%"; el.style.height = cell + "%";
       el.style.fontSize = (cell * 0.34) + "vmin"; el.style.opacity = "1"; el.style.pointerEvents = "auto";
       S_styleCell(el, num, i);
-      if (S.layout === "hexagon") el.style.clipPath = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+      if (S.motion === "float") el.style.clipPath = "";
+      else if (S.layout === "hexagon") el.style.clipPath = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
       else if (S.layout === "irregular") {
         const pts = [[rnd(0, 12), rnd(0, 12)], [rnd(88, 100), rnd(0, 12)], [rnd(88, 100), rnd(88, 100)], [rnd(0, 12), rnd(88, 100)]];
         el.style.clipPath = `polygon(${pts.map(([x, y]) => x + "% " + y + "%").join(", ")})`;
       } else el.style.clipPath = "";
     }
     S.count = count;
-    Sboard.className = "board";
+    Sboard.className = "board" + (S.motion === "float" ? " float" : "");
     if (S.interf.jitter) Sboard.classList.add("jitter");
     if (S.interf.rotation) Sboard.classList.add("rotate");
   }
@@ -433,8 +449,11 @@
     if (S.layout === "hexagon") return Math.floor(i / S.size);
     return Math.floor((i / count) * 4) % 4;
   }
+  function S_countFor() {
+    return S.motion === "float" ? S.size * S.size : S_computeLayout(S.layout, S.size).count;
+  }
   function S_buildBoard() {
-    const { count } = S_computeLayout(S.layout, S.size);
+    const count = S_countFor();
     const start = S.rangeOffset ? S.rangeStart : 1;
     S.numbers = shuffle(Array.from({ length: count }, (_, i) => start + i));
     S_applyLayout();
@@ -477,6 +496,26 @@
   }
   function S_startClock() { S.lastTick = performance.now(); S.rafId = requestAnimationFrame(S_tick); }
   function S_stopClock() { if (S.rafId) cancelAnimationFrame(S.rafId); S.rafId = null; }
+  let SfloatRaf = null;
+  function S_floatStep(now) {
+    if (!S.running || S.paused || S.motion !== "float") { SfloatRaf = null; return; }
+    const dt = Math.min(0.05, (now - S.floatLast) / 1000); S.floatLast = now;
+    const half = S.floatCell / 2;
+    for (let i = 0; i < ScellEls.length; i++) {
+      const el = ScellEls[i];
+      if (el.style.pointerEvents === "none") continue; // 已点中的数字定格，不再移动
+      const st = S.floatState[i];
+      st.x += st.vx * dt; st.y += st.vy * dt;
+      if (st.x < half) { st.x = half; st.vx = Math.abs(st.vx); }
+      else if (st.x > 100 - half) { st.x = 100 - half; st.vx = -Math.abs(st.vx); }
+      if (st.y < half) { st.y = half; st.vy = Math.abs(st.vy); }
+      else if (st.y > 100 - half) { st.y = 100 - half; st.vy = -Math.abs(st.vy); }
+      el.style.left = st.x + "%"; el.style.top = st.y + "%";
+    }
+    SfloatRaf = requestAnimationFrame(S_floatStep);
+  }
+  function S_startFloat() { if (S.motion !== "float" || !S.running || S.paused) return; S.floatLast = performance.now(); if (!SfloatRaf) SfloatRaf = requestAnimationFrame(S_floatStep); }
+  function S_stopFloat() { if (SfloatRaf) cancelAnimationFrame(SfloatRaf); SfloatRaf = null; }
   function S_startGame() {
     if (state_sound) beep(880, 0.1, "sine");
     S_buildBoard(); S.running = true; S.paused = false; S.finished = false;
@@ -486,23 +525,23 @@
     timeValueEl.closest(".hud-item").classList.remove("danger");
     Soverlay.classList.add("hidden");
     SstartBtn.disabled = true; SpauseBtn.disabled = false; SresumeBtn.disabled = true; SresetBtn.disabled = false; SendBtn.disabled = false;
-    S_updateProgress(); S_startClock();
+    S_updateProgress(); S_startClock(); S_startFloat();
   }
   function S_pauseGame() {
-    if (!S.running || S.paused) return; S.paused = true; S_stopClock(); SpauseBtn.disabled = true; SresumeBtn.disabled = false;
+    if (!S.running || S.paused) return; S.paused = true; S_stopClock(); S_stopFloat(); SpauseBtn.disabled = true; SresumeBtn.disabled = false;
     S_showOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", false); if (state_sound) beep(520, 0.1, "sine");
   }
   function S_resumeGame() {
-    if (!S.running || !S.paused) return; S.paused = false; Soverlay.classList.add("hidden"); SpauseBtn.disabled = false; SresumeBtn.disabled = true; S_startClock(); if (state_sound) beep(620, 0.1, "sine");
+    if (!S.running || !S.paused) return; S.paused = false; Soverlay.classList.add("hidden"); SpauseBtn.disabled = false; SresumeBtn.disabled = true; S_startClock(); S_startFloat(); if (state_sound) beep(620, 0.1, "sine");
   }
   function S_reset() {
-    S_stopClock(); S.running = false; S.paused = false; S.finished = false;
+    S_stopClock(); S_stopFloat(); S.running = false; S.paused = false; S.finished = false;
     SstartBtn.disabled = false; SpauseBtn.disabled = true; SresumeBtn.disabled = true; SresetBtn.disabled = false; SendBtn.disabled = true;
     S_showOverlay("◧", "准备开始", S_idleDesc(), "开始训练", true); S_refreshIdle();
   }
   function S_endGame() { if (!S.running || S.finished) return; S_finishGame("manual"); }
   function S_finishGame(reason) {
-    S_stopClock(); S.running = false; S.finished = true;
+    S_stopClock(); S_stopFloat(); S.running = false; S.finished = true;
     SpauseBtn.disabled = true; SresumeBtn.disabled = true; SstartBtn.disabled = false; SendBtn.disabled = true;
     const total = S.count; const isTimer = S.mode === "timer";
     const usedMs = isTimer ? S.timeLimit * 1000 - S.remain : S.elapsed;
@@ -519,7 +558,7 @@
       const desc = `本局未完成。已找到 ${Math.max(0, found)} / ${total} 个数字，用时 ${fmtTime(usedMs)}。`;
       S_showOverlay(emoji, title, desc, "再来一局", true);
     }
-    saveRecord({ game: "schulte", mode: S.mode, size: S.size, count: total, layout: S.layout, order: S.order, rangeOffset: S.rangeOffset, rangeStart: S.rangeStart, success, metric: Math.round(usedMs), unit: "ms", metricLabel: "用时", betterIsLower: true, timeMs: Math.round(usedMs), found: Math.max(0, found), interf: { ...S.interf }, date: Date.now() });
+    saveRecord({ game: "schulte", mode: S.mode, size: S.size, count: total, layout: S.layout, motion: S.motion, order: S.order, rangeOffset: S.rangeOffset, rangeStart: S.rangeStart, success, metric: Math.round(usedMs), unit: "ms", metricLabel: "用时", betterIsLower: true, timeMs: Math.round(usedMs), found: Math.max(0, found), interf: { ...S.interf }, date: Date.now() });
   }
   function S_showOverlay(emoji, title, desc, btnText, startAction) {
     SoverlayEmoji.textContent = emoji; SoverlayTitle.textContent = title; SoverlayDesc.textContent = desc; SoverlayStart.textContent = btnText;
@@ -529,13 +568,14 @@
     const start = S_effStart(), end = S_effEnd();
     const range = S.order === "asc" ? `${start} 到 ${end}` : `${end} 到 ${start}`;
     const offsetTip = S.rangeOffset ? `（偏移）` : "";
-    return `点击「开始」后，按${ORDER_LABEL[S.order]}依次点击数字 ${range}${offsetTip}（${LAYOUT_LABEL[S.layout]}布局）。`;
+    const motionTip = S.motion === "float" ? `；数字会随机飘动，需边追踪边寻找目标` : "";
+    return `点击「开始」后，按${ORDER_LABEL[S.order]}依次点击数字 ${range}${offsetTip}${motionTip}（${LAYOUT_LABEL[S.layout]}布局）。`;
   }
   SoverlayStart.addEventListener("click", () => { if (SoverlayStart.dataset.action === "start") S_startGame(); else S_resumeGame(); });
   function S_refreshIdle() {
     if (S.running) return;
     S.rangeStart = Math.max(1, parseInt(SrangeStart.value, 10) || 1);
-    S.count = S_computeLayout(S.layout, S.size).count;
+    S.count = S_countFor();
     S.step = S.order === "asc" ? 1 : -1; S.next = S.order === "asc" ? S_effStart() : S_effEnd();
     timeLabelEl.textContent = S.mode === "timer" ? "剩余" : "用时";
     timeValueEl.textContent = S.mode === "timer" ? fmtTime(S.timeLimit * 1000) : "0.0s";
@@ -549,6 +589,7 @@
   S_bindSeg("modeSeg", "mode", (v) => { S.mode = v; $("timerWrap").classList.toggle("hidden", v !== "timer"); S_refreshIdle(); });
   S_bindSeg("layoutSeg", "layout", (v) => { S.layout = v; S_refreshIdle(); });
   S_bindSeg("orderSeg", "order", (v) => { S.order = v; S_refreshIdle(); });
+  S_bindSeg("motionSeg", "motion", (v) => { S.motion = v; S_refreshIdle(); });
   $("customSize").addEventListener("input", (e) => { if ($("sizeSeg").querySelector(".seg-btn.active").dataset.size === "custom") { S.size = clampInt(e.target.value, 2, 15, 5); S_refreshIdle(); } });
   $("timeLimit").addEventListener("input", (e) => { S.timeLimit = clampInt(e.target.value, 5, 600, 60); });
   SrangeOffset.addEventListener("change", (e) => { S.rangeOffset = e.target.checked; SrangeStartWrap.classList.toggle("hidden", !e.target.checked); S_refreshIdle(); });

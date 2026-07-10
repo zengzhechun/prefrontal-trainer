@@ -310,6 +310,12 @@ body {
 }
 .cell:hover { transform: translate(-50%, -50%) scale(1.06); background: var(--cell-bg-hover); }
 .cell.wrong { animation: shake 0.32s; background: rgba(255, 107, 129, 0.22); }
+
+/* 飘动模式：取消 left/top/宽高的过渡，避免每帧被缓动拖慢，保持顺滑游走 */
+.board.float .cell {
+  transition: opacity .4s ease, background .18s, transform .12s;
+  clip-path: none !important;
+}
 @keyframes shake {
   0%, 100% { transform: translate(-50%, -50%); }
   20% { transform: translate(calc(-50% - 6px), -50%); }
