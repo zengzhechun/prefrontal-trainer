@@ -2,6 +2,7 @@
    前额叶训练中心 · 游戏逻辑
    纯前端 / 无依赖 / localStorage 持久化成绩
    包含：舒尔特方格 + Dual N-Back + Stroop 色词 + Go/No-Go
+         + Flanker + 数字广度 + 任务切换 + 视觉跟踪(MOT)
    ============================================================ */
 
 (() => {
@@ -52,6 +53,11 @@
       id: "task", name: "任务切换", domain: "灵活", domainLabel: "认知灵活性", icon: "🔄",
       desc: "按每题变化的规则对数字做判断，训练在不同任务间快速切换的认知灵活性。",
       settings: "taskSettings", stage: "taskStage", reset: tsReset, idle: tsReset,
+    },
+    {
+      id: "mot", name: "视觉跟踪", domain: "注意", domainLabel: "视觉跟踪", icon: "◍",
+      desc: "记住高亮小球、用眼睛跟踪其运动，结束后从所有小球中选出目标，训练视觉追踪与持续注意。",
+      settings: "motSettings", stage: "motStage", reset: motReset, idle: motReset,
     },
   ];
   const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
@@ -150,6 +156,7 @@
       const fl = all.filter((r) => r.game === "flanker").length;
       const dsp = all.filter((r) => r.game === "digitspan").length;
       const ts = all.filter((r) => r.game === "task").length;
+      const mot = all.filter((r) => r.game === "mot").length;
       const done = all.filter((r) => r.success).length;
       const rate = all.length ? Math.round((done / all.length) * 100) + "%" : "—";
       statsHtml = `
@@ -161,6 +168,7 @@
         <div class="stat"><div class="v">${fl}</div><div class="l">Flanker</div></div>
         <div class="stat"><div class="v">${dsp}</div><div class="l">数字广度</div></div>
         <div class="stat"><div class="v">${ts}</div><div class="l">任务切换</div></div>
+        <div class="stat"><div class="v">${mot}</div><div class="l">视觉跟踪</div></div>
         <div class="stat"><div class="v">${rate}</div><div class="l">完成率</div></div>`;
     } else {
       const best = filtered.length ? filtered.reduce((a, b) => (a.metric === b.metric ? a : (a.betterIsLower ? (a.metric <= b.metric ? a : b) : (a.metric >= b.metric ? a : b)))) : null;
@@ -181,7 +189,7 @@
     filtered.forEach((r) => {
       const li = document.createElement("li");
       li.className = "history-item";
-      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : (r.game === "flanker" ? "Flanker" : (r.game === "digitspan" ? "数字广度" : "任务切换")))));
+      const gameBadge = r.game === "schulte" ? "舒尔特" : (r.game === "nback" ? "N-Back" : (r.game === "stroop" ? "Stroop" : (r.game === "gonogo" ? "Go/No-Go" : (r.game === "flanker" ? "Flanker" : (r.game === "digitspan" ? "数字广度" : (r.game === "task" ? "任务切换" : "视觉跟踪"))))));
       const resTxt = r.success
         ? (r.game === "nback" ? "达标" : "完成")
         : (r.game === "schulte" ? `弃 ${r.found}/${r.count}` : "提前结束");
@@ -218,6 +226,11 @@
         const costLabel = (typeof r.switchCost === "number") ? `切换+${r.switchCost}ms` : "";
         tag2 = `<span class="mode-badge timer">${modeLabel}</span>`;
         meta = `${r.trials} 试次${costLabel ? "·" + costLabel : ""}`;
+      } else if (r.game === "mot") {
+        const speedLabel = { slow: "慢", med: "中", fast: "快" }[r.speed] || "中";
+        const cxLabel = { line: "直线", curve: "曲线", zigzag: "急停变向", inc: "逐轮递增" }[r.complexity] || "曲线";
+        tag2 = `<span class="mode-badge timer">${r.timed ? "限时" : "不限时"}</span>`;
+        meta = `${r.tracked}目标·${r.total}球·${speedLabel}·${r.duration / 1000}s·${cxLabel}·${r.rounds}轮`;
       } else {
         const modeLabel = { forward: "顺背", backward: "反背", mixed: "混合" }[r.mode] || "顺背";
         const best = r.metric ? `${r.metric} 位` : "0 位";
@@ -1452,6 +1465,270 @@
   $("tsPerLimit").addEventListener("change", (e) => { TS.perLimit = clampInt(e.target.value, 0, 5000, 0); });
   function tsIdle() { tsReset(); }
 
+  // ============================================================
+  //  模式八：视觉跟踪（Multiple Object Tracking, MOT）
+  // ============================================================
+  const CUE_MS = 2000;
+  const motCanvas = $("motCanvas");
+  const mctx = motCanvas.getContext ? motCanvas.getContext("2d") : null;
+  const MW = motCanvas.width, MH = motCanvas.height;
+  const motWrap = $("motWrap");
+  const motRoundVal = $("motRoundVal"), motPhaseVal = $("motPhaseVal"), motScoreVal = $("motScoreVal"), motTimeVal = $("motTimeVal");
+  const motSelectHint = $("motSelectHint");
+  const motOverlay = $("motOverlay"), motOe = $("motOverlayEmoji"), motOt = $("motOverlayTitle"), motOd = $("motOverlayDesc"), motOs = $("motOverlayStart");
+  const motStartBtn = $("motStartBtn"), motPauseBtn = $("motPauseBtn"), motResumeBtn = $("motResumeBtn"), motSubmitBtn = $("motSubmitBtn"), motResetBtn = $("motResetBtn");
+  const motTrackSeg = $("motTrackSeg"), motRatioSeg = $("motRatioSeg"), motSpeedSeg = $("motSpeedSeg"), motDurSeg = $("motDurSeg"), motCxSeg = $("motCxSeg"), motRoundsSeg = $("motRoundsSeg"), motSelLimitSeg = $("motSelLimitSeg");
+  const motTimed = $("motTimed"), motSelLimitWrap = $("motSelLimitWrap");
+  const MOT_PRESETS = {
+    easy: { tracked: 3, ratio: 1, speed: "slow", dur: 3000, cx: "line", rounds: 3, timed: false },
+    medium: { tracked: 4, ratio: 2, speed: "med", dur: 5000, cx: "curve", rounds: 3, timed: false },
+    hard: { tracked: 5, ratio: 3, speed: "fast", dur: 7000, cx: "zigzag", rounds: 5, timed: true },
+  };
+  const MOT = {
+    running: false, paused: false, finished: false, phase: "idle",
+    tracked: 4, ratio: 2, speed: "med", speedW: 90, duration: 5000, complexity: "curve",
+    rounds: 3, timed: false, selLimit: 8000,
+    round: 0, score: 0, totalHits: 0, totalFA: 0, totalTargets: 0,
+    balls: [], targets: [], selected: new Set(),
+    cueRemain: 0, motionRemain: 0, selRemain: 0, lastTick: null,
+  };
+
+  function motSetSegActive(segEl, attr, val) { segEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset[attr] === val)); }
+  function motBindSeg(segId, attr, cb) {
+    const seg = $(segId);
+    seg.addEventListener("click", (e) => { const btn = e.target.closest(".seg-btn"); if (!btn) return; seg.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); cb(btn.dataset[attr]); });
+  }
+  function motReadControls() {
+    MOT.tracked = parseInt(motTrackSeg.querySelector(".seg-btn.active").dataset.n, 10);
+    MOT.ratio = parseInt(motRatioSeg.querySelector(".seg-btn.active").dataset.r, 10);
+    MOT.speed = motSpeedSeg.querySelector(".seg-btn.active").dataset.s;
+    MOT.duration = parseInt(motDurSeg.querySelector(".seg-btn.active").dataset.d, 10);
+    MOT.complexity = motCxSeg.querySelector(".seg-btn.active").dataset.c;
+    MOT.rounds = parseInt(motRoundsSeg.querySelector(".seg-btn.active").dataset.r, 10);
+    MOT.timed = motTimed.checked;
+    MOT.selLimit = parseInt(motSelLimitSeg.querySelector(".seg-btn.active").dataset.s, 10);
+    MOT.speedW = ({ slow: 0.09, med: 0.15, fast: 0.24 }[MOT.speed]) * MW;
+  }
+  function motUpdateTotalInfo() {
+    const tracked = parseInt(motTrackSeg.querySelector(".seg-btn.active").dataset.n, 10);
+    const ratio = parseInt(motRatioSeg.querySelector(".seg-btn.active").dataset.r, 10);
+    $("motTotalInfo").textContent = tracked * (ratio + 1);
+  }
+  function motApplyDifficulty(diff) {
+    const p = MOT_PRESETS[diff]; if (!p) return;
+    motSetSegActive(motTrackSeg, "n", String(p.tracked));
+    motSetSegActive(motRatioSeg, "r", String(p.ratio));
+    motSetSegActive(motSpeedSeg, "s", p.speed);
+    motSetSegActive(motDurSeg, "d", String(p.dur));
+    motSetSegActive(motCxSeg, "c", p.cx);
+    motSetSegActive(motRoundsSeg, "r", String(p.rounds));
+    motTimed.checked = p.timed; motSelLimitWrap.classList.toggle("hidden", !p.timed);
+    motUpdateTotalInfo();
+  }
+  function motCxForRound(r) { return MOT.complexity === "inc" ? ["line", "curve", "zigzag"][Math.min(r, 2)] : MOT.complexity; }
+
+  function motStart() {
+    if (state_sound) beep(880, 0.1, "sine");
+    motReadControls();
+    MOT.score = 0; MOT.totalHits = 0; MOT.totalFA = 0; MOT.totalTargets = 0; MOT.round = 0; MOT.finished = false;
+    MOT.running = true; MOT.paused = false;
+    motStartBtn.disabled = true; motPauseBtn.disabled = false; motResumeBtn.disabled = true; motSubmitBtn.disabled = true; motResetBtn.disabled = false;
+    motStartRound(0);
+    MOT.lastTick = null; requestAnimationFrame(motTick);
+  }
+  function motStartRound(r) {
+    MOT.round = r;
+    const total = MOT.tracked * (MOT.ratio + 1);
+    const r0 = Math.max(11, 24 - total * 0.55);
+    const sp = MOT.speedW;
+    MOT.balls = [];
+    for (let i = 0; i < total; i++) {
+      const a = Math.random() * Math.PI * 2;
+      MOT.balls.push({ x: rnd(r0, MW - r0), y: rnd(r0, MH - r0), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: r0, ang: a, w: rnd(-1.3, 1.3), changeT: rnd(0.4, 1.1) });
+    }
+    MOT.targets = shuffle(Array.from({ length: total }, (_, i) => i)).slice(0, MOT.tracked);
+    MOT.selected = new Set();
+    MOT.phase = "cue"; MOT.cueRemain = CUE_MS;
+    motOverlay.classList.add("hidden");
+    motWrap.classList.remove("selecting");
+    motSelectHint.textContent = `记住 ${MOT.tracked} 个高亮小球（第 ${MOT.round + 1} / ${MOT.rounds} 轮）`;
+    motUpdateHud();
+    motRender(true, null, false);
+  }
+  function motUpdateMotion(dt) {
+    const cx = motCxForRound(MOT.round);
+    if (cx === "curve") {
+      for (const b of MOT.balls) { b.ang += b.w * dt; const sp = Math.hypot(b.vx, b.vy); b.vx = Math.cos(b.ang) * sp; b.vy = Math.sin(b.ang) * sp; }
+    } else if (cx === "zigzag") {
+      for (const b of MOT.balls) { b.changeT -= dt; if (b.changeT <= 0) { const a = Math.random() * Math.PI * 2; const sp = Math.hypot(b.vx, b.vy); b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp; b.changeT = rnd(0.4, 1.1); } }
+    }
+    for (const b of MOT.balls) { b.x += b.vx * dt; b.y += b.vy * dt; }
+    for (const b of MOT.balls) {
+      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
+      else if (b.x > MW - b.r) { b.x = MW - b.r; b.vx = -Math.abs(b.vx); }
+      if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
+      else if (b.y > MH - b.r) { b.y = MH - b.r; b.vy = -Math.abs(b.vy); }
+    }
+    for (let i = 0; i < MOT.balls.length; i++) {
+      for (let j = i + 1; j < MOT.balls.length; j++) {
+        const a = MOT.balls[i], b = MOT.balls[j];
+        const dx = b.x - a.x, dy = b.y - a.y; const dist = Math.hypot(dx, dy); const min = a.r + b.r;
+        if (dist > 0 && dist < min) {
+          const nx = dx / dist, ny = dy / dist;
+          const p = (a.vx * nx + a.vy * ny) - (b.vx * nx + b.vy * ny);
+          a.vx -= p * nx; a.vy -= p * ny; b.vx += p * nx; b.vy += p * ny;
+          const ov = (min - dist) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
+        }
+      }
+    }
+  }
+  function motEnterSelect() {
+    MOT.phase = "select"; MOT.selected = new Set();
+    motWrap.classList.add("selecting");
+    motSubmitBtn.disabled = false; motPauseBtn.disabled = true;
+    if (MOT.timed) MOT.selRemain = MOT.selLimit;
+    motSelectHint.innerHTML = `点击你记住的目标小球（已选 <b>0</b> / 目标 ${MOT.tracked}）`;
+    if (state_sound) beep(620, 0.08, "sine");
+    motRender(false, MOT.selected, false);
+  }
+  function motTick(now) {
+    if (!MOT.running) return;
+    if (MOT.lastTick == null) MOT.lastTick = now;
+    let dt = (now - MOT.lastTick) / 1000; MOT.lastTick = now;
+    if (dt < 0) dt = 0; if (dt > 0.05) dt = 0.05;
+    if (!MOT.paused) {
+      if (MOT.phase === "cue") {
+        MOT.cueRemain -= dt * 1000;
+        if (MOT.cueRemain <= 0) { MOT.phase = "motion"; MOT.motionRemain = MOT.duration; motSelectHint.textContent = "标记已消失，用眼睛跟踪目标小球！"; if (state_sound) beep(740, 0.08, "sine"); }
+      } else if (MOT.phase === "motion") {
+        motUpdateMotion(dt);
+        MOT.motionRemain -= dt * 1000;
+        if (MOT.motionRemain <= 0) motEnterSelect();
+      } else if (MOT.phase === "select") {
+        if (MOT.timed) { MOT.selRemain -= dt * 1000; if (MOT.selRemain <= 0) motSubmit(); }
+      }
+      motUpdateHud();
+      if (MOT.phase === "cue") motRender(true, null, false);
+      else if (MOT.phase === "motion") motRender(false, null, false);
+      else if (MOT.phase === "select") motRender(false, MOT.selected, false);
+    }
+    requestAnimationFrame(motTick);
+  }
+  function motSubmit() {
+    if (MOT.phase !== "select") return;
+    const sel = MOT.selected;
+    let hits = 0, fa = 0;
+    for (let i = 0; i < MOT.balls.length; i++) {
+      const isT = MOT.targets.includes(i), isS = sel.has(i);
+      if (isT && isS) hits++;
+      else if (!isT && isS) fa++;
+    }
+    const miss = MOT.tracked - hits;
+    MOT.score += Math.max(0, hits - fa);
+    MOT.totalHits += hits; MOT.totalFA += fa; MOT.totalTargets += MOT.tracked;
+    MOT.phase = "result";
+    motWrap.classList.remove("selecting");
+    motSubmitBtn.disabled = true; motPauseBtn.disabled = true;
+    motRender(false, sel, true);
+    if (state_sound) { if (hits === MOT.tracked && fa === 0) beep(990, 0.12, "sine"); else beep(300, 0.15, "square", 0.05); }
+    motUpdateHud();
+    if (MOT.round + 1 >= MOT.rounds) motFinalize();
+    else motShowOverlay(hits === MOT.tracked ? "✅" : "📊", `第 ${MOT.round + 1} 轮结束`, `本轮命中 ${hits} / ${MOT.tracked}，误选 ${fa} 个，累计得分 ${MOT.score}。`, "下一轮", "next");
+  }
+  function motFinalize() {
+    MOT.running = false; MOT.finished = true;
+    motStartBtn.disabled = false; motPauseBtn.disabled = true; motResumeBtn.disabled = true; motSubmitBtn.disabled = true; motResetBtn.disabled = false;
+    const acc = MOT.totalTargets ? Math.round(100 * MOT.totalHits / MOT.totalTargets) : 0;
+    const precision = (MOT.totalHits + MOT.totalFA) ? Math.round(100 * MOT.totalHits / (MOT.totalHits + MOT.totalFA)) : 0;
+    saveRecord({ game: "mot", tracked: MOT.tracked, total: MOT.tracked * (MOT.ratio + 1), speed: MOT.speed, duration: MOT.duration, complexity: MOT.complexity, timed: MOT.timed, rounds: MOT.rounds, success: true, metric: acc, unit: "%", metricLabel: "命中率", betterIsLower: false, score: MOT.score, hits: MOT.totalHits, fa: MOT.totalFA, precision, date: Date.now() });
+    motShowOverlay("🎉", "全部完成！", `总命中率 ${acc}%（精确率 ${precision}%）· 累计得分 ${MOT.score}`, "再来一局", "finish");
+  }
+  function motShowOverlay(emoji, title, desc, btn, action) {
+    motOe.textContent = emoji; motOt.textContent = title; motOd.textContent = desc; motOs.textContent = btn;
+    motOs.dataset.action = action; motOverlay.classList.remove("hidden");
+  }
+  function motUpdateHud() {
+    motRoundVal.textContent = (MOT.running ? MOT.round + 1 : 0) + " / " + MOT.rounds;
+    motPhaseVal.textContent = ({ idle: "准备", cue: "标记中", motion: "追踪中", select: "选择中", result: "结算" }[MOT.phase]) || "准备";
+    motScoreVal.textContent = MOT.score;
+    let t = "—";
+    if (MOT.phase === "cue") t = Math.ceil(MOT.cueRemain / 1000) + "s";
+    else if (MOT.phase === "motion") t = Math.ceil(MOT.motionRemain / 1000) + "s";
+    else if (MOT.phase === "select" && MOT.timed) t = Math.ceil(MOT.selRemain / 1000) + "s";
+    motTimeVal.textContent = t;
+    const danger = (MOT.phase === "select" && MOT.timed && MOT.selRemain < 3000);
+    motTimeVal.closest(".hud-item").classList.toggle("danger", danger);
+  }
+  function motRender(highlight, selectedSet, resultMode) {
+    if (!mctx) return;
+    mctx.clearRect(0, 0, MW, MH);
+    for (let i = 0; i < MOT.balls.length; i++) {
+      const b = MOT.balls[i];
+      let fill = "#6c8cff", ring = null, ringW = 3, dash = false;
+      if (resultMode) {
+        const isT = MOT.targets.includes(i), isS = selectedSet.has(i);
+        if (isT && isS) { fill = "#36d399"; ring = "#0a9e6b"; ringW = 4; }
+        else if (isT && !isS) { fill = "#6c8cff"; ring = "#ffcc66"; ringW = 4; dash = true; }
+        else if (!isT && isS) { fill = "#ff6b81"; }
+        else { fill = "#6c8cff"; }
+      } else {
+        if (highlight && MOT.targets.includes(i)) { ring = "#ffd166"; ringW = 5; }
+        if (selectedSet && selectedSet.has(i)) { ring = "#36d399"; ringW = 5; }
+      }
+      mctx.beginPath(); mctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      mctx.fillStyle = fill; mctx.fill();
+      if (ring) { mctx.lineWidth = ringW; mctx.strokeStyle = ring; mctx.setLineDash(dash ? [5, 4] : []); mctx.stroke(); mctx.setLineDash([]); }
+    }
+  }
+  function motPause() {
+    if (!MOT.running || MOT.paused) return; MOT.paused = true;
+    motPauseBtn.disabled = true; motResumeBtn.disabled = false;
+    motShowOverlay("⏸", "已暂停", "点击「恢复」继续训练。", "继续", "resume"); if (state_sound) beep(520, 0.1, "sine");
+  }
+  function motResume() {
+    if (!MOT.running || !MOT.paused) return; MOT.paused = false; MOT.lastTick = null;
+    motOverlay.classList.add("hidden"); motPauseBtn.disabled = false; motResumeBtn.disabled = true; if (state_sound) beep(620, 0.1, "sine");
+  }
+  function motReset() {
+    MOT.running = false; MOT.paused = false; MOT.finished = false; MOT.phase = "idle"; MOT.round = 0; MOT.score = 0; MOT.totalHits = 0; MOT.totalFA = 0; MOT.totalTargets = 0; MOT.lastTick = null;
+    MOT.balls = []; MOT.targets = []; MOT.selected = new Set();
+    motStartBtn.disabled = false; motPauseBtn.disabled = true; motResumeBtn.disabled = true; motSubmitBtn.disabled = true; motResetBtn.disabled = false;
+    motWrap.classList.remove("selecting");
+    if (mctx) mctx.clearRect(0, 0, MW, MH);
+    motRoundVal.textContent = "0 / " + MOT.rounds; motPhaseVal.textContent = "准备"; motScoreVal.textContent = "0"; motTimeVal.textContent = "—";
+    motSelectHint.textContent = "点击「开始」后，记住被高亮标记的小球。";
+    motShowOverlay("◍", "准备开始", "记住短暂高亮标记的小球，标记消失后用眼睛跟踪它们；运动结束后，从所有小球中选出你记住的目标。", "开始训练", "start");
+  }
+  motOs.addEventListener("click", () => { const a = motOs.dataset.action; if (a === "start") motStart(); else if (a === "next") motStartRound(MOT.round + 1); else if (a === "resume") motResume(); else motReset(); });
+  motCanvas.addEventListener("click", (e) => {
+    if (MOT.phase !== "select") return;
+    const rect = motCanvas.getBoundingClientRect();
+    const sx = rect.width ? MW / rect.width : 1, sy = rect.height ? MH / rect.height : 1;
+    const x = (e.clientX - rect.left) * sx, y = (e.clientY - rect.top) * sy;
+    let hit = -1, best = 1e9;
+    for (let i = 0; i < MOT.balls.length; i++) { const b = MOT.balls[i]; const d = Math.hypot(b.x - x, b.y - y); if (d <= b.r && d < best) { best = d; hit = i; } }
+    if (hit >= 0) {
+      if (MOT.selected.has(hit)) MOT.selected.delete(hit); else MOT.selected.add(hit);
+      motRender(false, MOT.selected, false);
+      motSelectHint.innerHTML = `点击你记住的目标小球（已选 <b>${MOT.selected.size}</b> / 目标 ${MOT.tracked}）`;
+    }
+  });
+  motStartBtn.addEventListener("click", motStart);
+  motPauseBtn.addEventListener("click", motPause);
+  motResumeBtn.addEventListener("click", motResume);
+  motSubmitBtn.addEventListener("click", motSubmit);
+  motResetBtn.addEventListener("click", motReset);
+  motBindSeg("motDiffSeg", "diff", (v) => motApplyDifficulty(v));
+  motBindSeg("motTrackSeg", "n", () => motUpdateTotalInfo());
+  motBindSeg("motRatioSeg", "r", () => motUpdateTotalInfo());
+  motBindSeg("motSpeedSeg", "s", () => {});
+  motBindSeg("motDurSeg", "d", () => {});
+  motBindSeg("motCxSeg", "c", () => {});
+  motBindSeg("motRoundsSeg", "r", () => {});
+  motBindSeg("motSelLimitSeg", "s", () => {});
+  motTimed.addEventListener("change", (e) => { motSelLimitWrap.classList.toggle("hidden", !e.target.checked); });
+  function motIdle() { motReset(); }
+
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
   $("soundOn").addEventListener("change", (e) => { state_sound = e.target.checked; });
   $("themeBtn").addEventListener("click", () => { const light = document.body.classList.toggle("light"); lsSet(THEME_KEY, light ? "light" : "dark"); });
@@ -1489,6 +1766,9 @@
       else if (e.key.toLowerCase() === "j" || e.key === "ArrowRight") { e.preventDefault(); tsRespond(1); }
       else if (e.code === "Space") { e.preventDefault(); if (!TS.running) tsStart(); else if (TS.paused) tsResume(); else tsEnd(); }
       else if (e.key.toLowerCase() === "r") tsReset();
+    } else if (currentGame === "mot") {
+      if (e.code === "Space") { e.preventDefault(); if (!MOT.running) motStart(); else if (MOT.paused) motResume(); else if (MOT.phase === "select") motSubmit(); }
+      else if (e.key.toLowerCase() === "r") motReset();
     }
   });
 
@@ -1504,6 +1784,7 @@
     nbShowOverlay("◉", "准备开始", "记住 N 步之前出现过的「位置」与「声音」，出现相同就按下对应匹配键（F / J）。", "开始训练", true);
     flReset();
     tsReset();
+    motReset();
   }
   init();
 })();
