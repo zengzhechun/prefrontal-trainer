@@ -652,6 +652,30 @@ body {
 .hud-mot .hud-item.danger { animation: pulseDanger 1s ease-in-out infinite; }
 @keyframes pulseDanger { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
+.mot-result-bar {
+  width: 100%;
+  max-width: min(72vh, 560px);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mot-fb { font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.mot-fb b { font-weight: 700; }
+.mot-fb .ok { color: #36d399; }
+.mot-fb .bad { color: #ff6b81; }
+.mot-fb .warn { color: #ffcc66; }
+.mot-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--text-dim); }
+.mot-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.mot-legend .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid transparent; }
+.mot-legend .dot.hit { background: #36d399; border-color: #0a9e6b; }
+.mot-legend .dot.wrong { background: #ff6b81; }
+.mot-legend .dot.miss { background: #6c8cff; border-color: #ffcc66; border-style: dashed; }
+
 /* ===== 响应式 ===== */
 @media (max-width: 1080px) {
   .layout { grid-template-columns: 1fr; }

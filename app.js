@@ -1475,6 +1475,7 @@
   const motWrap = $("motWrap");
   const motRoundVal = $("motRoundVal"), motPhaseVal = $("motPhaseVal"), motScoreVal = $("motScoreVal"), motTimeVal = $("motTimeVal");
   const motSelectHint = $("motSelectHint");
+  const motResultBar = $("motResultBar"), motResultFB = $("motResultFB");
   const motOverlay = $("motOverlay"), motOe = $("motOverlayEmoji"), motOt = $("motOverlayTitle"), motOd = $("motOverlayDesc"), motOs = $("motOverlayStart");
   const motStartBtn = $("motStartBtn"), motPauseBtn = $("motPauseBtn"), motResumeBtn = $("motResumeBtn"), motSubmitBtn = $("motSubmitBtn"), motResetBtn = $("motResetBtn");
   const motTrackSeg = $("motTrackSeg"), motRatioSeg = $("motRatioSeg"), motSpeedSeg = $("motSpeedSeg"), motDurSeg = $("motDurSeg"), motCxSeg = $("motCxSeg"), motRoundsSeg = $("motRoundsSeg"), motSelLimitSeg = $("motSelLimitSeg");
@@ -1550,6 +1551,7 @@
     MOT.selected = new Set();
     MOT.phase = "cue"; MOT.cueRemain = CUE_MS;
     motOverlay.classList.add("hidden");
+    motResultBar.classList.add("hidden");
     motWrap.classList.remove("selecting");
     motSelectHint.textContent = `记住 ${MOT.tracked} 个高亮小球（第 ${MOT.round + 1} / ${MOT.rounds} 轮）`;
     motUpdateHud();
@@ -1585,7 +1587,8 @@
   function motEnterSelect() {
     MOT.phase = "select"; MOT.selected = new Set();
     motWrap.classList.add("selecting");
-    motSubmitBtn.disabled = false; motPauseBtn.disabled = true;
+    motSubmitBtn.disabled = false; motSubmitBtn.textContent = "验证答案"; motPauseBtn.disabled = true;
+    motResultBar.classList.add("hidden");
     if (MOT.timed) MOT.selRemain = MOT.selLimit;
     motSelectHint.innerHTML = `点击你记住的目标小球（已选 <b>0</b> / 目标 ${MOT.tracked}）`;
     if (state_sound) beep(620, 0.08, "sine");
@@ -1615,25 +1618,33 @@
     requestAnimationFrame(motTick);
   }
   function motSubmit() {
-    if (MOT.phase !== "select") return;
-    const sel = MOT.selected;
-    let hits = 0, fa = 0;
-    for (let i = 0; i < MOT.balls.length; i++) {
-      const isT = MOT.targets.includes(i), isS = sel.has(i);
-      if (isT && isS) hits++;
-      else if (!isT && isS) fa++;
+    if (MOT.phase === "select") {
+      const sel = MOT.selected;
+      let hits = 0, fa = 0;
+      for (let i = 0; i < MOT.balls.length; i++) {
+        const isT = MOT.targets.includes(i), isS = sel.has(i);
+        if (isT && isS) hits++;
+        else if (!isT && isS) fa++;
+      }
+      const miss = MOT.tracked - hits;
+      MOT.score += Math.max(0, hits - fa);
+      MOT.totalHits += hits; MOT.totalFA += fa; MOT.totalTargets += MOT.tracked;
+      MOT.phase = "result";
+      motWrap.classList.remove("selecting");
+      motSubmitBtn.disabled = false;
+      motSubmitBtn.textContent = (MOT.round + 1 >= MOT.rounds) ? "查看总结果" : "下一轮 ▶";
+      motPauseBtn.disabled = true;
+      motRender(false, sel, true);
+      motSelectHint.innerHTML = `验证完成，已用颜色标出对错，请查看下方说明。`;
+      motResultFB.innerHTML = `第 ${MOT.round + 1} 轮 · 命中 <b class="ok">${hits} / ${MOT.tracked}</b> · 误选 <b class="bad">${fa}</b> · 漏跟 <b class="warn">${miss}</b> · 本轮得分 <b>${Math.max(0, hits - fa)}</b>（累计 ${MOT.score}）`;
+      motResultBar.classList.remove("hidden");
+      if (state_sound) { if (hits === MOT.tracked && fa === 0) beep(990, 0.12, "sine"); else beep(300, 0.15, "square", 0.05); }
+      motUpdateHud();
+    } else if (MOT.phase === "result") {
+      motResultBar.classList.add("hidden");
+      if (MOT.round + 1 >= MOT.rounds) motFinalize();
+      else motStartRound(MOT.round + 1);
     }
-    const miss = MOT.tracked - hits;
-    MOT.score += Math.max(0, hits - fa);
-    MOT.totalHits += hits; MOT.totalFA += fa; MOT.totalTargets += MOT.tracked;
-    MOT.phase = "result";
-    motWrap.classList.remove("selecting");
-    motSubmitBtn.disabled = true; motPauseBtn.disabled = true;
-    motRender(false, sel, true);
-    if (state_sound) { if (hits === MOT.tracked && fa === 0) beep(990, 0.12, "sine"); else beep(300, 0.15, "square", 0.05); }
-    motUpdateHud();
-    if (MOT.round + 1 >= MOT.rounds) motFinalize();
-    else motShowOverlay(hits === MOT.tracked ? "✅" : "📊", `第 ${MOT.round + 1} 轮结束`, `本轮命中 ${hits} / ${MOT.tracked}，误选 ${fa} 个，累计得分 ${MOT.score}。`, "下一轮", "next");
   }
   function motFinalize() {
     MOT.running = false; MOT.finished = true;
@@ -1692,8 +1703,9 @@
   function motReset() {
     MOT.running = false; MOT.paused = false; MOT.finished = false; MOT.phase = "idle"; MOT.round = 0; MOT.score = 0; MOT.totalHits = 0; MOT.totalFA = 0; MOT.totalTargets = 0; MOT.lastTick = null;
     MOT.balls = []; MOT.targets = []; MOT.selected = new Set();
-    motStartBtn.disabled = false; motPauseBtn.disabled = true; motResumeBtn.disabled = true; motSubmitBtn.disabled = true; motResetBtn.disabled = false;
+    motStartBtn.disabled = false; motPauseBtn.disabled = true; motResumeBtn.disabled = true; motSubmitBtn.disabled = true; motSubmitBtn.textContent = "验证答案"; motResetBtn.disabled = false;
     motWrap.classList.remove("selecting");
+    motResultBar.classList.add("hidden");
     if (mctx) mctx.clearRect(0, 0, MW, MH);
     motRoundVal.textContent = "0 / " + MOT.rounds; motPhaseVal.textContent = "准备"; motScoreVal.textContent = "0"; motTimeVal.textContent = "—";
     motSelectHint.textContent = "点击「开始」后，记住被高亮标记的小球。";
@@ -1767,7 +1779,7 @@
       else if (e.code === "Space") { e.preventDefault(); if (!TS.running) tsStart(); else if (TS.paused) tsResume(); else tsEnd(); }
       else if (e.key.toLowerCase() === "r") tsReset();
     } else if (currentGame === "mot") {
-      if (e.code === "Space") { e.preventDefault(); if (!MOT.running) motStart(); else if (MOT.paused) motResume(); else if (MOT.phase === "select") motSubmit(); }
+      if (e.code === "Space") { e.preventDefault(); if (!MOT.running) motStart(); else if (MOT.paused) motResume(); else if (MOT.phase === "select" || MOT.phase === "result") motSubmit(); }
       else if (e.key.toLowerCase() === "r") motReset();
     }
   });

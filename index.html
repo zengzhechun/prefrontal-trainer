@@ -729,13 +729,21 @@
                 <button class="btn primary" id="motOverlayStart">开始训练</button>
               </div>
             </div>
+            <div class="mot-result-bar hidden" id="motResultBar">
+              <div class="mot-fb" id="motResultFB"></div>
+              <div class="mot-legend">
+                <span class="lg"><i class="dot hit"></i>正确选中</span>
+                <span class="lg"><i class="dot wrong"></i>误选</span>
+                <span class="lg"><i class="dot miss"></i>漏跟（没选中的目标）</span>
+              </div>
+            </div>
           </div>
 
           <div class="controls">
             <button class="btn primary" id="motStartBtn">开始</button>
             <button class="btn" id="motPauseBtn" disabled>暂停</button>
             <button class="btn" id="motResumeBtn" disabled>恢复</button>
-            <button class="btn" id="motSubmitBtn" disabled>确认提交</button>
+            <button class="btn" id="motSubmitBtn" disabled>验证答案</button>
             <button class="btn ghost" id="motResetBtn">重置</button>
           </div>
         </div>
