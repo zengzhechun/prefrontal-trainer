@@ -1480,6 +1480,7 @@
   const motStartBtn = $("motStartBtn"), motPauseBtn = $("motPauseBtn"), motResumeBtn = $("motResumeBtn"), motSubmitBtn = $("motSubmitBtn"), motResetBtn = $("motResetBtn");
   const motTrackSeg = $("motTrackSeg"), motRatioSeg = $("motRatioSeg"), motSpeedSeg = $("motSpeedSeg"), motDurSeg = $("motDurSeg"), motCxSeg = $("motCxSeg"), motRoundsSeg = $("motRoundsSeg"), motSelLimitSeg = $("motSelLimitSeg");
   const motTimed = $("motTimed"), motSelLimitWrap = $("motSelLimitWrap");
+  const motDurCustom = $("motDurCustom"), motDurCustomWrap = $("motDurCustomWrap");
   const MOT_PRESETS = {
     easy: { tracked: 3, ratio: 1, speed: "slow", dur: 3000, cx: "line", rounds: 3, timed: false },
     medium: { tracked: 4, ratio: 2, speed: "med", dur: 5000, cx: "curve", rounds: 3, timed: false },
@@ -1487,7 +1488,7 @@
   };
   const MOT = {
     running: false, paused: false, finished: false, phase: "idle",
-    tracked: 4, ratio: 2, speed: "med", speedW: 90, duration: 5000, complexity: "curve",
+    tracked: 2, ratio: 2, speed: "med", speedW: 90, duration: 20000, complexity: "curve",
     rounds: 3, timed: false, selLimit: 8000,
     round: 0, score: 0, totalHits: 0, totalFA: 0, totalTargets: 0,
     balls: [], targets: [], selected: new Set(),
@@ -1503,7 +1504,8 @@
     MOT.tracked = parseInt(motTrackSeg.querySelector(".seg-btn.active").dataset.n, 10);
     MOT.ratio = parseInt(motRatioSeg.querySelector(".seg-btn.active").dataset.r, 10);
     MOT.speed = motSpeedSeg.querySelector(".seg-btn.active").dataset.s;
-    MOT.duration = parseInt(motDurSeg.querySelector(".seg-btn.active").dataset.d, 10);
+    const durBtn = motDurSeg.querySelector(".seg-btn.active");
+    MOT.duration = durBtn.dataset.d === "custom" ? Math.max(1000, Math.min(180000, (parseInt(motDurCustom.value, 10) || 20) * 1000)) : parseInt(durBtn.dataset.d, 10);
     MOT.complexity = motCxSeg.querySelector(".seg-btn.active").dataset.c;
     MOT.rounds = parseInt(motRoundsSeg.querySelector(".seg-btn.active").dataset.r, 10);
     MOT.timed = motTimed.checked;
@@ -1566,20 +1568,24 @@
     }
     for (const b of MOT.balls) { b.x += b.vx * dt; b.y += b.vy * dt; }
     for (const b of MOT.balls) {
-      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
-      else if (b.x > MW - b.r) { b.x = MW - b.r; b.vx = -Math.abs(b.vx); }
-      if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
-      else if (b.y > MH - b.r) { b.y = MH - b.r; b.vy = -Math.abs(b.vy); }
+      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); b.ang = Math.atan2(b.vy, b.vx); }
+      else if (b.x > MW - b.r) { b.x = MW - b.r; b.vx = -Math.abs(b.vx); b.ang = Math.atan2(b.vy, b.vx); }
+      if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); b.ang = Math.atan2(b.vy, b.vx); }
+      else if (b.y > MH - b.r) { b.y = MH - b.r; b.vy = -Math.abs(b.vy); b.ang = Math.atan2(b.vy, b.vx); }
     }
     for (let i = 0; i < MOT.balls.length; i++) {
       for (let j = i + 1; j < MOT.balls.length; j++) {
         const a = MOT.balls[i], b = MOT.balls[j];
-        const dx = b.x - a.x, dy = b.y - a.y; const dist = Math.hypot(dx, dy); const min = a.r + b.r;
-        if (dist > 0 && dist < min) {
+        let dx = b.x - a.x, dy = b.y - a.y; let dist = Math.hypot(dx, dy); const min = a.r + b.r;
+        if (dist === 0) { dx = 1; dy = 0; dist = 1; } // 完全重合时给一个确定法向，避免卡死
+        if (dist < min) {
           const nx = dx / dist, ny = dy / dist;
           const p = (a.vx * nx + a.vy * ny) - (b.vx * nx + b.vy * ny);
-          a.vx -= p * nx; a.vy -= p * ny; b.vx += p * nx; b.vy += p * ny;
+          if (p > 0) { // 仅在相互接近时交换法向速度，避免分离时被错误加速而停在原地
+            a.vx -= p * nx; a.vy -= p * ny; b.vx += p * nx; b.vy += p * ny;
+          }
           const ov = (min - dist) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
+          a.ang = Math.atan2(a.vy, a.vx); b.ang = Math.atan2(b.vy, b.vx); // 同步角度，曲线/急停模式才不会被覆盖回旧方向
         }
       }
     }
@@ -1734,10 +1740,11 @@
   motBindSeg("motTrackSeg", "n", () => motUpdateTotalInfo());
   motBindSeg("motRatioSeg", "r", () => motUpdateTotalInfo());
   motBindSeg("motSpeedSeg", "s", () => {});
-  motBindSeg("motDurSeg", "d", () => {});
+  motBindSeg("motDurSeg", "d", (v) => { motDurCustomWrap.classList.toggle("hidden", v !== "custom"); motReadControls(); });
   motBindSeg("motCxSeg", "c", () => {});
   motBindSeg("motRoundsSeg", "r", () => {});
   motBindSeg("motSelLimitSeg", "s", () => {});
+  motDurCustom.addEventListener("input", motReadControls);
   motTimed.addEventListener("change", (e) => { motSelLimitWrap.classList.toggle("hidden", !e.target.checked); });
   function motIdle() { motReset(); }
 

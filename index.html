@@ -367,9 +367,9 @@
           <section class="field">
             <label class="field-label">跟踪目标数</label>
             <div class="seg" id="motTrackSeg">
-              <button class="seg-btn" data-n="2">2</button>
+              <button class="seg-btn active" data-n="2">2</button>
               <button class="seg-btn" data-n="3">3</button>
-              <button class="seg-btn active" data-n="4">4</button>
+              <button class="seg-btn" data-n="4">4</button>
               <button class="seg-btn" data-n="5">5</button>
               <button class="seg-btn" data-n="6">6</button>
               <button class="seg-btn" data-n="8">8</button>
@@ -398,10 +398,16 @@
           <section class="field">
             <label class="field-label">运动时长</label>
             <div class="seg" id="motDurSeg">
-              <button class="seg-btn" data-d="3000">3s</button>
-              <button class="seg-btn active" data-d="5000">5s</button>
-              <button class="seg-btn" data-d="7000">7s</button>
-              <button class="seg-btn" data-d="9000">9s</button>
+              <button class="seg-btn" data-d="5000">5s</button>
+              <button class="seg-btn" data-d="10000">10s</button>
+              <button class="seg-btn" data-d="15000">15s</button>
+              <button class="seg-btn active" data-d="20000">20s</button>
+              <button class="seg-btn" data-d="30000">30s</button>
+              <button class="seg-btn" data-d="custom">自定义</button>
+            </div>
+            <div class="custom-wrap hidden" id="motDurCustomWrap">
+              <input type="number" id="motDurCustom" min="1" max="180" step="1" value="20" />
+              <span class="hint">秒（1–180）</span>
             </div>
           </section>
 
