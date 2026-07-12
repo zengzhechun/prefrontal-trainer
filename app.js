@@ -1481,6 +1481,7 @@
   const motTrackSeg = $("motTrackSeg"), motRatioSeg = $("motRatioSeg"), motSpeedSeg = $("motSpeedSeg"), motDurSeg = $("motDurSeg"), motCxSeg = $("motCxSeg"), motRoundsSeg = $("motRoundsSeg"), motSelLimitSeg = $("motSelLimitSeg");
   const motTimed = $("motTimed"), motSelLimitWrap = $("motSelLimitWrap");
   const motDurCustom = $("motDurCustom"), motDurCustomWrap = $("motDurCustomWrap");
+  const motRatioCustom = $("motRatioCustom"), motRatioCustomWrap = $("motRatioCustomWrap");
   const MOT_PRESETS = {
     easy: { tracked: 3, ratio: 1, speed: "slow", dur: 3000, cx: "line", rounds: 3, timed: false },
     medium: { tracked: 4, ratio: 2, speed: "med", dur: 5000, cx: "curve", rounds: 3, timed: false },
@@ -1502,7 +1503,8 @@
   }
   function motReadControls() {
     MOT.tracked = parseInt(motTrackSeg.querySelector(".seg-btn.active").dataset.n, 10);
-    MOT.ratio = parseInt(motRatioSeg.querySelector(".seg-btn.active").dataset.r, 10);
+    const ratioBtn = motRatioSeg.querySelector(".seg-btn.active");
+    MOT.ratio = ratioBtn.dataset.r === "custom" ? clampInt(motRatioCustom.value, 1, 10, 2) : parseInt(ratioBtn.dataset.r, 10);
     MOT.speed = motSpeedSeg.querySelector(".seg-btn.active").dataset.s;
     const durBtn = motDurSeg.querySelector(".seg-btn.active");
     MOT.duration = durBtn.dataset.d === "custom" ? Math.max(1000, Math.min(180000, (parseInt(motDurCustom.value, 10) || 20) * 1000)) : parseInt(durBtn.dataset.d, 10);
@@ -1514,7 +1516,8 @@
   }
   function motUpdateTotalInfo() {
     const tracked = parseInt(motTrackSeg.querySelector(".seg-btn.active").dataset.n, 10);
-    const ratio = parseInt(motRatioSeg.querySelector(".seg-btn.active").dataset.r, 10);
+    const ratioBtn = motRatioSeg.querySelector(".seg-btn.active");
+    const ratio = ratioBtn.dataset.r === "custom" ? clampInt(motRatioCustom.value, 1, 10, 2) : parseInt(ratioBtn.dataset.r, 10);
     $("motTotalInfo").textContent = tracked * (ratio + 1);
   }
   function motApplyDifficulty(diff) {
@@ -1526,6 +1529,7 @@
     motSetSegActive(motCxSeg, "c", p.cx);
     motSetSegActive(motRoundsSeg, "r", String(p.rounds));
     motTimed.checked = p.timed; motSelLimitWrap.classList.toggle("hidden", !p.timed);
+    motRatioCustomWrap.classList.add("hidden");
     motUpdateTotalInfo();
   }
   function motCxForRound(r) { return MOT.complexity === "inc" ? ["line", "curve", "zigzag"][Math.min(r, 2)] : MOT.complexity; }
@@ -1738,14 +1742,16 @@
   motResetBtn.addEventListener("click", motReset);
   motBindSeg("motDiffSeg", "diff", (v) => motApplyDifficulty(v));
   motBindSeg("motTrackSeg", "n", () => motUpdateTotalInfo());
-  motBindSeg("motRatioSeg", "r", () => motUpdateTotalInfo());
+  motBindSeg("motRatioSeg", "r", (v) => { motRatioCustomWrap.classList.toggle("hidden", v !== "custom"); motUpdateTotalInfo(); });
   motBindSeg("motSpeedSeg", "s", () => {});
   motBindSeg("motDurSeg", "d", (v) => { motDurCustomWrap.classList.toggle("hidden", v !== "custom"); motReadControls(); });
   motBindSeg("motCxSeg", "c", () => {});
   motBindSeg("motRoundsSeg", "r", () => {});
   motBindSeg("motSelLimitSeg", "s", () => {});
+  motRatioCustom.addEventListener("input", () => { if (motRatioSeg.querySelector(".seg-btn.active").dataset.r === "custom") motUpdateTotalInfo(); });
   motDurCustom.addEventListener("input", motReadControls);
   motTimed.addEventListener("change", (e) => { motSelLimitWrap.classList.toggle("hidden", !e.target.checked); });
+  motUpdateTotalInfo();
   function motIdle() { motReset(); }
 
   // ---------- 全局：音效开关 + 主题 + 键盘 ----------
